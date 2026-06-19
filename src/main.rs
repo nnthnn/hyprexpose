@@ -239,8 +239,8 @@ impl AppState {
         if self.cursor_surface.is_some() {
             return;
         }
-        let compositor = self.compositor.as_ref().map(|c| c.clone());
-        let shm = self.shm.as_ref().map(|s| s.clone());
+        let compositor = self.compositor.clone();
+        let shm = self.shm.clone();
         if let (Some(compositor), Some(shm)) = (compositor, shm) {
             self.cursor_surface = Some(compositor.create_surface(qh, ()));
             self.cursor_theme = CursorTheme::load(conn, shm, 24).ok();
@@ -248,7 +248,7 @@ impl AppState {
     }
 
     fn apply_cursor(&mut self, pointer: &wl_pointer::WlPointer, is_pointer: bool) {
-        let surf = match self.cursor_surface.as_ref().map(|s| s.clone()) {
+        let surf = match self.cursor_surface.clone() {
             Some(s) => s,
             None => return,
         };
@@ -763,16 +763,16 @@ fn redraw(state: &mut AppState, qh: &QueueHandle<AppState>) {
         return;
     }
 
-    let pixels = render::draw(
-        state.width,
-        state.height,
-        &state.workspaces,
-        state.selected,
-        &state.thumbnails,
-        &state.config,
-        state.active_window_address,
-        state.hovered_window,
-    );
+    let pixels = render::draw(render::DrawParams {
+        width: state.width,
+        height: state.height,
+        workspaces: &state.workspaces,
+        selected_index: state.selected,
+        thumbnails: &state.thumbnails,
+        cfg: &state.config,
+        active_window_address: state.active_window_address,
+        hovered_window: state.hovered_window,
+    });
 
     let stride = state.width * 4;
     let size = (stride * state.height) as usize;

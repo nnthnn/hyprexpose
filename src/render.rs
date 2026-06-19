@@ -113,16 +113,19 @@ fn draw_client(
     }
 }
 
-pub fn draw(
-    width: u32,
-    height: u32,
-    workspaces: &[WorkspaceInfo],
-    selected_index: usize,
-    thumbnails: &[Thumbnail],
-    cfg: &Config,
-    active_window_address: u64,
-    hovered_window: Option<u64>,
-) -> Vec<u8> {
+pub struct DrawParams<'a> {
+    pub width: u32,
+    pub height: u32,
+    pub workspaces: &'a [WorkspaceInfo],
+    pub selected_index: usize,
+    pub thumbnails: &'a [Thumbnail],
+    pub cfg: &'a Config,
+    pub active_window_address: u64,
+    pub hovered_window: Option<u64>,
+}
+
+pub fn draw(p: DrawParams<'_>) -> Vec<u8> {
+    let DrawParams { width, height, workspaces, selected_index, thumbnails, cfg, active_window_address, hovered_window } = p;
     let stride = width * 4;
     let size = (stride * height) as usize;
     let buf = vec![0u8; size];
