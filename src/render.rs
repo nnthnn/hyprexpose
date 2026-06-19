@@ -36,6 +36,7 @@ fn draw_client(
     off_y: f64,
     thumbnails: &[Thumbnail],
     active_window_address: u64,
+    hovered_window: Option<u64>,
     window_font: &pango::FontDescription,
 ) {
     let rx = off_x + (client.x - min_x) as f64 * scale;
@@ -74,12 +75,25 @@ fn draw_client(
         cr.fill().ok();
     }
 
-    // Active-window indicator: coloured border so the user knows which window 'm' will move
+    // Active-window indicator
     if active_window_address != 0 && client.address == active_window_address {
         let (ar, ag, ab, aa) = cfg.colors.active_window.rgba();
         rounded_rect(cr, rx - 2.0, ry - 2.0, rw + 4.0, rh + 4.0, 5.0);
         cr.set_source_rgba(ar, ag, ab, aa);
         cr.set_line_width(2.5);
+        cr.stroke().ok();
+    }
+
+    // Hover highlight
+    if hovered_window == Some(client.address) {
+        let (or_, og, ob, oa) = cfg.colors.hover_overlay.rgba();
+        rounded_rect(cr, rx, ry, rw, rh, 4.0);
+        cr.set_source_rgba(or_, og, ob, oa);
+        cr.fill().ok();
+        let (br, bg, bb, ba) = cfg.colors.hover_border.rgba();
+        rounded_rect(cr, rx - 1.5, ry - 1.5, rw + 3.0, rh + 3.0, 5.0);
+        cr.set_source_rgba(br, bg, bb, ba);
+        cr.set_line_width(1.5);
         cr.stroke().ok();
     }
 
@@ -107,6 +121,7 @@ pub fn draw(
     thumbnails: &[Thumbnail],
     cfg: &Config,
     active_window_address: u64,
+    hovered_window: Option<u64>,
 ) -> Vec<u8> {
     let stride = width * 4;
     let size = (stride * height) as usize;
@@ -235,7 +250,7 @@ pub fn draw(
         let off_y = win_y + (win_h - ws_h * scale) / 2.0;
 
         for client in &ws.clients {
-            draw_client(&cr, cfg, client, min_x, min_y, scale, off_x, off_y, thumbnails, active_window_address, &window_font);
+            draw_client(&cr, cfg, client, min_x, min_y, scale, off_x, off_y, thumbnails, active_window_address, hovered_window, &window_font);
         }
     }
 

@@ -62,6 +62,13 @@ window_label = "#ffffffe6"
 # Set the alpha to 00 to disable the indicator entirely.
 active_window = "#ffbf33f2"    # amber
 
+# Border drawn around the window thumbnail currently under the cursor.
+hover_border = "#ffffff99"
+
+# Brightness tint overlaid on the hovered window thumbnail.
+# Set the alpha to 00 to disable the fill and keep only the border.
+hover_overlay = "#ffffff26"
+
 # ── Behavior ──────────────────────────────────────────────────────────────────
 
 [behavior]

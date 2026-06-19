@@ -17,6 +17,7 @@ use wayland_client::{
     },
     Connection, Dispatch, EventQueue, QueueHandle, WEnum,
 };
+use wayland_cursor::CursorTheme;
 
 const BTN_LEFT: u32 = 0x110;
 const BTN_RIGHT: u32 = 0x111;
@@ -178,6 +179,11 @@ struct AppState {
     allow_mouse: bool,
     pointer_x: f64,
     pointer_y: f64,
+    hovered_window: Option<u64>,
+    cursor_surface: Option<wl_surface::WlSurface>,
+    cursor_theme: Option<CursorTheme>,
+    cursor_enter_serial: u32,
+    cursor_is_pointer: bool,
 
     // Async thumbnail capture
     pending_capture: Option<CaptureFrameData>,
@@ -217,10 +223,60 @@ impl AppState {
             allow_mouse,
             pointer_x: 0.0,
             pointer_y: 0.0,
+            hovered_window: None,
+            cursor_surface: None,
+            cursor_theme: None,
+            cursor_enter_serial: 0,
+            cursor_is_pointer: false,
             pending_capture: None,
             capture_queue: VecDeque::new(),
             active_capture: None,
             pending_focus: None,
+        }
+    }
+
+    fn init_cursor(&mut self, conn: &Connection, qh: &QueueHandle<Self>) {
+        if self.cursor_surface.is_some() {
+            return;
+        }
+        let compositor = self.compositor.as_ref().map(|c| c.clone());
+        let shm = self.shm.as_ref().map(|s| s.clone());
+        if let (Some(compositor), Some(shm)) = (compositor, shm) {
+            self.cursor_surface = Some(compositor.create_surface(qh, ()));
+            self.cursor_theme = CursorTheme::load(conn, shm, 24).ok();
+        }
+    }
+
+    fn apply_cursor(&mut self, pointer: &wl_pointer::WlPointer, is_pointer: bool) {
+        let surf = match self.cursor_surface.as_ref().map(|s| s.clone()) {
+            Some(s) => s,
+            None => return,
+        };
+        let serial = self.cursor_enter_serial;
+        let theme = match self.cursor_theme.as_mut() {
+            Some(t) => t,
+            None => return,
+        };
+        let fallbacks: &[&str] = if is_pointer {
+            &["pointer", "hand2"]
+        } else {
+            &["default", "left_ptr"]
+        };
+        let mut found = false;
+        for name in fallbacks {
+            if let Some(cursor) = theme.get_cursor(name) {
+                let image = &cursor[0];
+                let (hx, hy) = image.hotspot();
+                surf.attach(Some(&**image), 0, 0);
+                surf.damage_buffer(0, 0, i32::MAX, i32::MAX);
+                surf.commit();
+                pointer.set_cursor(serial, Some(&surf), hx as i32, hy as i32);
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            pointer.set_cursor(serial, None, 0, 0);
         }
     }
 
@@ -494,21 +550,44 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppState {
 impl Dispatch<wl_pointer::WlPointer, ()> for AppState {
     fn event(
         state: &mut Self,
-        _: &wl_pointer::WlPointer,
+        pointer: &wl_pointer::WlPointer,
         event: wl_pointer::Event,
         _: &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
+        conn: &Connection,
+        qh: &QueueHandle<Self>,
     ) {
         if !state.allow_mouse {
             return;
         }
         match event {
-            wl_pointer::Event::Enter { surface_x, surface_y, .. }
-            | wl_pointer::Event::Motion { surface_x, surface_y, .. } => {
+            wl_pointer::Event::Enter { serial, surface_x, surface_y, .. } => {
+                state.pointer_x = surface_x;
+                state.pointer_y = surface_y;
+                state.cursor_enter_serial = serial;
+                state.cursor_is_pointer = false;
+                state.select_workspace_at(surface_x, surface_y);
+                state.init_cursor(conn, qh);
+                let win = state.window_at(surface_x, surface_y);
+                state.apply_cursor(pointer, win.is_some());
+                state.cursor_is_pointer = win.is_some();
+                if state.hovered_window != win {
+                    state.hovered_window = win;
+                    state.needs_redraw = true;
+                }
+            }
+            wl_pointer::Event::Motion { surface_x, surface_y, .. } => {
                 state.pointer_x = surface_x;
                 state.pointer_y = surface_y;
                 state.select_workspace_at(surface_x, surface_y);
+                let win = state.window_at(surface_x, surface_y);
+                if win.is_some() != state.cursor_is_pointer {
+                    state.apply_cursor(pointer, win.is_some());
+                    state.cursor_is_pointer = win.is_some();
+                }
+                if state.hovered_window != win {
+                    state.hovered_window = win;
+                    state.needs_redraw = true;
+                }
             }
             wl_pointer::Event::Button {
                 button,
@@ -516,6 +595,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for AppState {
                 ..
             } => {
                 if state.workspace_at(state.pointer_x, state.pointer_y).is_none() {
+                    state.should_close = true;
                     return;
                 }
                 match button {
@@ -537,6 +617,14 @@ impl Dispatch<wl_pointer::WlPointer, ()> for AppState {
                         state.should_close = true;
                     }
                     _ => {}
+                }
+            }
+            wl_pointer::Event::Leave { serial, .. } => {
+                pointer.set_cursor(serial, None, 0, 0);
+                state.cursor_is_pointer = false;
+                if state.hovered_window.is_some() {
+                    state.hovered_window = None;
+                    state.needs_redraw = true;
                 }
             }
             _ => {}
@@ -683,6 +771,7 @@ fn redraw(state: &mut AppState, qh: &QueueHandle<AppState>) {
         &state.thumbnails,
         &state.config,
         state.active_window_address,
+        state.hovered_window,
     );
 
     let stride = state.width * 4;

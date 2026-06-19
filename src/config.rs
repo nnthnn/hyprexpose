@@ -108,6 +108,10 @@ pub struct ColorsConfig {
     pub window_label: Color,
     /// Border drawn around the active window thumbnail (the one 'm' will move).
     pub active_window: Color,
+    /// Border drawn around the hovered window thumbnail.
+    pub hover_border: Color,
+    /// Brightness tint overlaid on the hovered window thumbnail.
+    pub hover_overlay: Color,
 }
 
 impl Default for ColorsConfig {
@@ -119,7 +123,9 @@ impl Default for ColorsConfig {
             label:         Color::Array([0.85, 0.85, 0.9,  1.0 ]),
             empty_label:   Color::Array([0.5,  0.5,  0.55, 0.8 ]),
             window_label:  Color::Array([1.0,  1.0,  1.0,  0.9 ]),
-            active_window: Color::Array([1.0,  0.75, 0.2,  0.95]),
+            active_window:  Color::Array([1.0,  0.75, 0.2,  0.95]),
+            hover_border:   Color::Array([1.0,  1.0,  1.0,  0.6 ]),
+            hover_overlay:  Color::Array([1.0,  1.0,  1.0,  0.15]),
         }
     }
 }
