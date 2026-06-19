@@ -187,6 +187,10 @@ pub fn move_window_to_workspace(con_id: u64, name: &str) {
     ));
 }
 
+pub fn focus_window(con_id: u64) {
+    run_command(&format!("[con_id={con_id}] focus"));
+}
+
 pub fn get_active_workspace_name() -> String {
     let raw = ipc_request(GET_WORKSPACES, "").unwrap_or_default();
     let ws_list: Vec<SwayWorkspace> = serde_json::from_slice(&raw).unwrap_or_default();

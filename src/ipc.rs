@@ -67,6 +67,13 @@ pub fn switch_workspace(ws: &WorkspaceInfo) {
     }
 }
 
+pub fn focus_window(workspace_id: i32, address: u64, cx: i32, cy: i32) {
+    match compositor() {
+        Compositor::Hyprland => hyprland::focus_window(workspace_id, address, cx, cy),
+        Compositor::Sway => sway::focus_window(address),
+    }
+}
+
 pub fn move_window_to_workspace(window_address: u64, ws: &WorkspaceInfo) {
     match compositor() {
         Compositor::Hyprland => hyprland::move_window_to_workspace(window_address, ws.id),

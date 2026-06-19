@@ -14,6 +14,7 @@ fn socket_path() -> Option<String> {
 fn hypr_request(cmd: &str) -> Option<String> {
     let path = socket_path()?;
     let mut stream = UnixStream::connect(&path).ok()?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).ok();
     let msg = format!("j/{cmd}");
     stream.write_all(msg.as_bytes()).ok()?;
     stream.shutdown(Shutdown::Write).ok();
@@ -28,8 +29,7 @@ fn json_string<'a>(json: &'a str, key: &str) -> &'a str {
     let needle = format!("\"{key}\":");
     let Some(pos) = json.find(&needle) else { return "" };
     let rest = json[pos + needle.len()..].trim_start_matches([' ', '\t']);
-    if rest.starts_with('"') {
-        let inner = &rest[1..];
+    if let Some(inner) = rest.strip_prefix('"') {
         let end = inner.find('"').unwrap_or(0);
         &inner[..end]
     } else {
@@ -191,6 +191,18 @@ pub fn move_window_to_workspace(window_address: u64, workspace_id: i32) {
     dispatch(&format!(
         "hl.dsp.window.move({{ workspace = {workspace_id}, window = \"address:0x{window_address:x}\", silent = true }})"
     ));
+}
+
+pub fn focus_window(_workspace_id: i32, address: u64, _cx: i32, _cy: i32) {
+    dispatch(&format!("hl.dsp.focus({{ window = \"address:0x{address:x}\"}})"));
+    // Query the window's actual on-screen position after focus+scroll, then warp cursor there.
+    if let Some(json) = hypr_request("activewindow") {
+        let (x, y) = parse_array_pair(&json, "at");
+        let (w, h) = parse_array_pair(&json, "size");
+        let cx = x + w / 2;
+        let cy = y + h / 2;
+        dispatch(&format!("hl.dsp.cursor.move({{x = {cx}, y = {cy}}})"));
+    }
 }
 
 pub fn get_active_workspace_name() -> String {

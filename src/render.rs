@@ -20,10 +20,11 @@ fn rounded_rect(cr: &Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
     cr.close_path();
 }
 
-fn find_thumb<'a>(thumbnails: &'a [Thumbnail], address: u64) -> Option<&'a Thumbnail> {
+fn find_thumb(thumbnails: &[Thumbnail], address: u64) -> Option<&Thumbnail> {
     thumbnails.iter().find(|t| t.address == address)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_client(
     cr: &Context,
     cfg: &Config,
@@ -136,7 +137,7 @@ pub fn draw(
 
     let n = workspaces.len();
     let cols = ((n as f64).sqrt().ceil() as usize).max(1);
-    let rows = (n + cols - 1) / cols;
+    let rows = n.div_ceil(cols);
     let pad = cfg.appearance.card_padding;
 
     let card_w = ((width as f64 - pad * (cols + 1) as f64) / cols as f64)
@@ -193,7 +194,8 @@ pub fn draw(
             layout.set_font_description(Some(&label_font));
             let (tw, _) = layout.pixel_size();
             let (lr, lg, lb, la) = cfg.colors.label.rgba();
-            cr.set_source_rgba(lr, lg, lb, la);
+            let alpha = if i == selected_index { la } else { la * 0.25 };
+            cr.set_source_rgba(lr, lg, lb, alpha);
             cr.move_to(cx + (card_w - tw as f64) / 2.0, cy + 6.0);
             pangocairo::functions::show_layout(&cr, &layout);
         }
