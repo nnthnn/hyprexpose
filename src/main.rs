@@ -85,6 +85,51 @@ const XKB_KEY_7: u32 = 0x0037;
 const XKB_KEY_8: u32 = 0x0038;
 const XKB_KEY_9: u32 = 0x0039;
 
+fn key_name_to_keysym(name: &str) -> Option<u32> {
+    match name {
+        "Escape"         => Some(XKB_KEY_ESCAPE),
+        "Return" | "Enter" => Some(XKB_KEY_RETURN),
+        "Left"           => Some(XKB_KEY_LEFT),
+        "Up"             => Some(XKB_KEY_UP),
+        "Right"          => Some(XKB_KEY_RIGHT),
+        "Down"           => Some(XKB_KEY_DOWN),
+        "space" | "Space" => Some(0x0020),
+        _ if name.len() == 1 => {
+            let c = name.chars().next()?;
+            if c.is_ascii_graphic() { Some(c as u32) } else { None }
+        }
+        _ => None,
+    }
+}
+
+fn resolve_keys(names: &[String]) -> Vec<u32> {
+    names.iter().filter_map(|n| key_name_to_keysym(n)).collect()
+}
+
+struct ResolvedKeys {
+    close:       Vec<u32>,
+    confirm:     Vec<u32>,
+    left:        Vec<u32>,
+    right:       Vec<u32>,
+    up:          Vec<u32>,
+    down:        Vec<u32>,
+    move_window: Vec<u32>,
+}
+
+impl ResolvedKeys {
+    fn from_config(kb: &config::KeybindingsConfig) -> Self {
+        Self {
+            close:       resolve_keys(&kb.close),
+            confirm:     resolve_keys(&kb.confirm),
+            left:        resolve_keys(&kb.left),
+            right:       resolve_keys(&kb.right),
+            up:          resolve_keys(&kb.up),
+            down:        resolve_keys(&kb.down),
+            move_window: resolve_keys(&kb.move_window),
+        }
+    }
+}
+
 fn keycode_to_keysym(keycode: u32) -> u32 {
     // Compositors send raw evdev keycodes via wl_keyboard.
     match keycode {
@@ -174,6 +219,7 @@ struct AppState {
     no_preview: bool,
     active_window_address: u64,
     config: Config,
+    keys: ResolvedKeys,
 
     // Mouse support (only active when --allow-mouse is set).
     allow_mouse: bool,
@@ -219,6 +265,7 @@ impl AppState {
             selected: 0,
             no_preview,
             active_window_address: 0,
+            keys: ResolvedKeys::from_config(&config.keybindings),
             config,
             allow_mouse,
             pointer_x: 0.0,
@@ -288,47 +335,33 @@ impl AppState {
         }
         let cols = ((n as f64).sqrt().ceil() as usize).max(1);
 
-        match keysym {
-            XKB_KEY_ESCAPE => return true,
-            XKB_KEY_1 ..= XKB_KEY_9 => {
-                let idx = (keysym - XKB_KEY_1) as usize;
-                if idx < n {
-                    ipc::switch_workspace(&self.workspaces[idx]);
-                }
-                return true;
-            }
-            XKB_KEY_RETURN => {
-                self.activate_selected_workspace();
-                return true;
-            }
-            XKB_KEY_RIGHT | XKB_KEY_L => {
-                if self.selected + 1 < n {
-                    self.selected += 1;
-                    self.needs_redraw = true;
-                }
-            }
-            XKB_KEY_LEFT | XKB_KEY_H => {
-                if self.selected > 0 {
-                    self.selected -= 1;
-                    self.needs_redraw = true;
-                }
-            }
-            XKB_KEY_DOWN | XKB_KEY_J => {
-                if self.selected + cols < n {
-                    self.selected += cols;
-                    self.needs_redraw = true;
-                }
-            }
-            XKB_KEY_UP | XKB_KEY_K => {
-                if self.selected >= cols {
-                    self.selected -= cols;
-                    self.needs_redraw = true;
-                }
-            }
-            XKB_KEY_M if self.move_active_window_to_selected() => {
-                return true;
-            }
-            _ => {}
+        let k = keysym;
+        if self.keys.close.contains(&k) {
+            return true;
+        }
+        if (XKB_KEY_1..=XKB_KEY_9).contains(&k) {
+            let idx = (k - XKB_KEY_1) as usize;
+            if idx < n { ipc::switch_workspace(&self.workspaces[idx]); }
+            return true;
+        }
+        if self.keys.confirm.contains(&k) {
+            self.activate_selected_workspace();
+            return true;
+        }
+        if self.keys.right.contains(&k) && self.selected + 1 < n {
+            self.selected += 1;
+            self.needs_redraw = true;
+        } else if self.keys.left.contains(&k) && self.selected > 0 {
+            self.selected -= 1;
+            self.needs_redraw = true;
+        } else if self.keys.down.contains(&k) && self.selected + cols < n {
+            self.selected += cols;
+            self.needs_redraw = true;
+        } else if self.keys.up.contains(&k) && self.selected >= cols {
+            self.selected -= cols;
+            self.needs_redraw = true;
+        } else if self.keys.move_window.contains(&k) && self.move_active_window_to_selected() {
+            return true;
         }
         false
     }

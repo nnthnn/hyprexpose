@@ -153,6 +153,69 @@ impl Default for BehaviorConfig {
     }
 }
 
+// ── keybindings ───────────────────────────────────────────────────────────────
+
+fn deserialize_key_list<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    use serde::de::{self, SeqAccess, Visitor};
+    struct V;
+    impl<'de> Visitor<'de> for V {
+        type Value = Vec<String>;
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(f, "a key name or array of key names")
+        }
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Vec<String>, E> {
+            Ok(vec![v.to_owned()])
+        }
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<String>, A::Error> {
+            let mut out = Vec::new();
+            while let Some(k) = seq.next_element::<String>()? { out.push(k); }
+            Ok(out)
+        }
+    }
+    d.deserialize_any(V)
+}
+
+fn default_close()       -> Vec<String> { vec!["Escape".into()] }
+fn default_confirm()     -> Vec<String> { vec!["Return".into()] }
+fn default_left()        -> Vec<String> { vec!["Left".into(), "h".into()] }
+fn default_right()       -> Vec<String> { vec!["Right".into(), "l".into()] }
+fn default_up()          -> Vec<String> { vec!["Up".into(), "k".into()] }
+fn default_down()        -> Vec<String> { vec!["Down".into(), "j".into()] }
+fn default_move_window() -> Vec<String> { vec!["m".into()] }
+
+#[derive(Deserialize, Clone)]
+#[serde(default)]
+pub struct KeybindingsConfig {
+    #[serde(default = "default_close",       deserialize_with = "deserialize_key_list")]
+    pub close: Vec<String>,
+    #[serde(default = "default_confirm",     deserialize_with = "deserialize_key_list")]
+    pub confirm: Vec<String>,
+    #[serde(default = "default_left",        deserialize_with = "deserialize_key_list")]
+    pub left: Vec<String>,
+    #[serde(default = "default_right",       deserialize_with = "deserialize_key_list")]
+    pub right: Vec<String>,
+    #[serde(default = "default_up",          deserialize_with = "deserialize_key_list")]
+    pub up: Vec<String>,
+    #[serde(default = "default_down",        deserialize_with = "deserialize_key_list")]
+    pub down: Vec<String>,
+    #[serde(default = "default_move_window", deserialize_with = "deserialize_key_list")]
+    pub move_window: Vec<String>,
+}
+
+impl Default for KeybindingsConfig {
+    fn default() -> Self {
+        Self {
+            close:       default_close(),
+            confirm:     default_confirm(),
+            left:        default_left(),
+            right:       default_right(),
+            up:          default_up(),
+            down:        default_down(),
+            move_window: default_move_window(),
+        }
+    }
+}
+
 // ── top-level Config ──────────────────────────────────────────────────────────
 
 #[derive(Deserialize, Clone, Default)]
@@ -161,6 +224,7 @@ pub struct Config {
     pub appearance: AppearanceConfig,
     pub colors: ColorsConfig,
     pub behavior: BehaviorConfig,
+    pub keybindings: KeybindingsConfig,
 }
 
 /// Bundled at build time so a first run can seed the user's config dir.

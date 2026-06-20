@@ -69,6 +69,21 @@ hover_border = "#ffffff99"
 # Set the alpha to 00 to disable the fill and keep only the border.
 hover_overlay = "#ffffff26"
 
+# ── Keybindings ───────────────────────────────────────────────────────────────
+# Each action accepts a single key name or an array of key names.
+# Supported names: "Escape", "Return", "Left", "Right", "Up", "Down", "space",
+# or any single printable character ("h", "j", "k", "l", "m", etc.).
+# Number keys 1–9 always jump directly to that workspace and cannot be remapped.
+
+[keybindings]
+close       = "Escape"
+confirm     = "Return"
+left        = ["Left", "h"]
+right       = ["Right", "l"]
+up          = ["Up", "k"]
+down        = ["Down", "j"]
+move_window = "m"
+
 # ── Behavior ──────────────────────────────────────────────────────────────────
 
 [behavior]
