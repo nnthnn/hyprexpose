@@ -157,6 +157,7 @@ pub fn get_workspaces() -> Vec<WorkspaceInfo> {
         let ci = ClientInfo {
             class_name: json_string(cj, "class").to_owned(),
             title: json_string(cj, "title").to_owned(),
+            initial_title: json_string(cj, "initialTitle").to_owned(),
             address: parse_address(cj),
             workspace_id,
             x,

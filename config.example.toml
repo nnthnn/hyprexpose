@@ -12,6 +12,9 @@ font = "Sans 11"
 # Font used for workspace number / name labels at the top of each card.
 label_font = "Sans Bold 13"
 
+# Base font family for the hover tooltip (size and weight are appended automatically).
+tooltip_font = "Sans"
+
 # Gap between workspace cards, and between cards and the screen edge (px).
 card_padding = 24.0
 
@@ -68,6 +71,12 @@ hover_border = "#ffffff99"
 # Brightness tint overlaid on the hovered window thumbnail.
 # Set the alpha to 00 to disable the fill and keep only the border.
 hover_overlay = "#ffffff26"
+
+# Hover tooltip colors.
+tooltip_background = "#0f0f1af2"
+tooltip_name       = "#fffff2f2"   # app name (bold)
+tooltip_class      = "#b2b2bfcc"   # full class, shown when it differs from the app name
+tooltip_title      = "#d9d9e7e5"   # window title
 
 # ── Keybindings ───────────────────────────────────────────────────────────────
 # Each action accepts a single key name or an array of key names.

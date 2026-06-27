@@ -73,6 +73,8 @@ pub struct AppearanceConfig {
     pub thumb_padding: f64,
     /// Width of the selection highlight border (px).
     pub select_border: f64,
+    /// Base font family used for the hover tooltip (size suffixes are appended automatically).
+    pub tooltip_font: String,
 }
 
 impl Default for AppearanceConfig {
@@ -87,6 +89,7 @@ impl Default for AppearanceConfig {
             label_height: 32.0,
             thumb_padding: 8.0,
             select_border: 3.0,
+            tooltip_font: "Sans".into(),
         }
     }
 }
@@ -112,20 +115,32 @@ pub struct ColorsConfig {
     pub hover_border: Color,
     /// Brightness tint overlaid on the hovered window thumbnail.
     pub hover_overlay: Color,
+    /// Tooltip background fill.
+    pub tooltip_background: Color,
+    /// Tooltip app name text.
+    pub tooltip_name: Color,
+    /// Tooltip class name text (shown when different from app name).
+    pub tooltip_class: Color,
+    /// Tooltip window title text.
+    pub tooltip_title: Color,
 }
 
 impl Default for ColorsConfig {
     fn default() -> Self {
         Self {
-            background:    Color::Array([0.0,  0.0,  0.0,  0.75]),
-            card:          Color::Array([0.12, 0.12, 0.15, 0.95]),
-            selection:     Color::Array([0.4,  0.6,  1.0,  0.9 ]),
-            label:         Color::Array([0.85, 0.85, 0.9,  1.0 ]),
-            empty_label:   Color::Array([0.5,  0.5,  0.55, 0.8 ]),
-            window_label:  Color::Array([1.0,  1.0,  1.0,  0.9 ]),
-            active_window:  Color::Array([1.0,  0.75, 0.2,  0.95]),
-            hover_border:   Color::Array([1.0,  1.0,  1.0,  0.6 ]),
-            hover_overlay:  Color::Array([1.0,  1.0,  1.0,  0.15]),
+            background:         Color::Array([0.0,  0.0,  0.0,  0.75]),
+            card:               Color::Array([0.12, 0.12, 0.15, 0.95]),
+            selection:          Color::Array([0.4,  0.6,  1.0,  0.9 ]),
+            label:              Color::Array([0.85, 0.85, 0.9,  1.0 ]),
+            empty_label:        Color::Array([0.5,  0.5,  0.55, 0.8 ]),
+            window_label:       Color::Array([1.0,  1.0,  1.0,  0.9 ]),
+            active_window:      Color::Array([1.0,  0.75, 0.2,  0.95]),
+            hover_border:       Color::Array([1.0,  1.0,  1.0,  0.6 ]),
+            hover_overlay:      Color::Array([1.0,  1.0,  1.0,  0.15]),
+            tooltip_background: Color::Array([0.06, 0.06, 0.10, 0.95]),
+            tooltip_name:       Color::Array([1.0,  1.0,  1.0,  0.95]),
+            tooltip_class:      Color::Array([0.7,  0.7,  0.75, 0.8 ]),
+            tooltip_title:      Color::Array([0.85, 0.85, 0.9,  0.9 ]),
         }
     }
 }

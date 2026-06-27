@@ -64,25 +64,14 @@ unsafe extern "C" fn sig_handler(sig: libc::c_int) {
 
 // ── key mapping (evdev keycodes → XKB keysyms) ──────────────────────────────
 
-const XKB_KEY_ESCAPE: u32 = 0xff1b;
-const XKB_KEY_RETURN: u32 = 0xff0d;
-const XKB_KEY_LEFT:   u32 = 0xff51;
-const XKB_KEY_UP:     u32 = 0xff52;
-const XKB_KEY_RIGHT:  u32 = 0xff53;
-const XKB_KEY_DOWN:   u32 = 0xff54;
-const XKB_KEY_H: u32 = 0x0068;
-const XKB_KEY_J: u32 = 0x006a;
-const XKB_KEY_K: u32 = 0x006b;
-const XKB_KEY_L: u32 = 0x006c;
-const XKB_KEY_M: u32 = 0x006d;
+const XKB_KEY_ESCAPE:    u32 = 0xff1b;
+const XKB_KEY_RETURN:    u32 = 0xff0d;
+const XKB_KEY_BACKSPACE: u32 = 0xff08;
+const XKB_KEY_LEFT:      u32 = 0xff51;
+const XKB_KEY_UP:        u32 = 0xff52;
+const XKB_KEY_RIGHT:     u32 = 0xff53;
+const XKB_KEY_DOWN:      u32 = 0xff54;
 const XKB_KEY_1: u32 = 0x0031;
-const XKB_KEY_2: u32 = 0x0032;
-const XKB_KEY_3: u32 = 0x0033;
-const XKB_KEY_4: u32 = 0x0034;
-const XKB_KEY_5: u32 = 0x0035;
-const XKB_KEY_6: u32 = 0x0036;
-const XKB_KEY_7: u32 = 0x0037;
-const XKB_KEY_8: u32 = 0x0038;
 const XKB_KEY_9: u32 = 0x0039;
 
 fn key_name_to_keysym(name: &str) -> Option<u32> {
@@ -132,28 +121,29 @@ impl ResolvedKeys {
 
 fn keycode_to_keysym(keycode: u32) -> u32 {
     // Compositors send raw evdev keycodes via wl_keyboard.
+    // Letter keysyms equal their ASCII value.
     match keycode {
         1   => XKB_KEY_ESCAPE,
+        14  => XKB_KEY_BACKSPACE,
         28  => XKB_KEY_RETURN,
-        105 => XKB_KEY_LEFT,
+        57  => 0x0020, // space
         103 => XKB_KEY_UP,
+        105 => XKB_KEY_LEFT,
         106 => XKB_KEY_RIGHT,
         108 => XKB_KEY_DOWN,
-        35  => XKB_KEY_H,
-        36  => XKB_KEY_J,
-        37  => XKB_KEY_K,
-        38  => XKB_KEY_L,
-        50  => XKB_KEY_M,
-        2   => XKB_KEY_1,
-        3   => XKB_KEY_2,
-        4   => XKB_KEY_3,
-        5   => XKB_KEY_4,
-        6   => XKB_KEY_5,
-        7   => XKB_KEY_6,
-        8   => XKB_KEY_7,
-        9   => XKB_KEY_8,
-        10  => XKB_KEY_9,
-        _   => 0,
+        // digits 1-9 (evdev 2-10) and 0 (11)
+        2  => 0x31, 3  => 0x32, 4  => 0x33, 5  => 0x34, 6  => 0x35,
+        7  => 0x36, 8  => 0x37, 9  => 0x38, 10 => 0x39, 11 => 0x30,
+        // top row: q w e r t y u i o p
+        16 => 0x71, 17 => 0x77, 18 => 0x65, 19 => 0x72, 20 => 0x74,
+        21 => 0x79, 22 => 0x75, 23 => 0x69, 24 => 0x6f, 25 => 0x70,
+        // home row: a s d f g h j k l
+        30 => 0x61, 31 => 0x73, 32 => 0x64, 33 => 0x66, 34 => 0x67,
+        35 => 0x68, 36 => 0x6a, 37 => 0x6b, 38 => 0x6c,
+        // bottom row: z x c v b n m
+        44 => 0x7a, 45 => 0x78, 46 => 0x63, 47 => 0x76, 48 => 0x62,
+        49 => 0x6e, 50 => 0x6d,
+        _  => 0,
     }
 }
 
@@ -221,6 +211,10 @@ struct AppState {
     config: Config,
     keys: ResolvedKeys,
 
+    // Type-to-filter
+    filter: String,
+    filter_match: Option<u64>,
+
     // Mouse support (only active when --allow-mouse is set).
     allow_mouse: bool,
     pointer_x: f64,
@@ -238,6 +232,28 @@ struct AppState {
 
     // Window to focus after the overlay surface is fully destroyed: (workspace_id, address, cx, cy)
     pending_focus: Option<(i32, u64, i32, i32)>,
+}
+
+fn find_single_window_match(workspaces: &[WorkspaceInfo], filter: &str) -> Option<u64> {
+    let f = filter.to_lowercase();
+    let mut found = None;
+    for ws in workspaces {
+        for c in &ws.clients {
+            if c.class_name.to_lowercase().contains(&f) || c.title.to_lowercase().contains(&f) {
+                if found.is_some() { return None; } // more than one
+                found = Some(c.address);
+            }
+        }
+    }
+    found
+}
+
+fn workspace_matches(ws: &WorkspaceInfo, filter: &str) -> bool {
+    ws.name.to_lowercase().contains(filter)
+        || ws.clients.iter().any(|c| {
+            c.class_name.to_lowercase().contains(filter)
+                || c.title.to_lowercase().contains(filter)
+        })
 }
 
 impl AppState {
@@ -267,6 +283,8 @@ impl AppState {
             active_window_address: 0,
             keys: ResolvedKeys::from_config(&config.keybindings),
             config,
+            filter: String::new(),
+            filter_match: None,
             allow_mouse,
             pointer_x: 0.0,
             pointer_y: 0.0,
@@ -330,40 +348,100 @@ impl AppState {
     /// Returns true if the overlay should be closed.
     fn handle_key(&mut self, keysym: u32) -> bool {
         let n = self.workspaces.len();
-        if n == 0 {
-            return true;
-        }
+        if n == 0 { return true; }
         let cols = ((n as f64).sqrt().ceil() as usize).max(1);
-
         let k = keysym;
+
+        // Backspace: pop filter char
+        if k == XKB_KEY_BACKSPACE {
+            if self.filter.pop().is_some() {
+                self.update_filter_state();
+                self.needs_redraw = true;
+            }
+            return false;
+        }
+
+        // Escape: clear filter if active, else close
         if self.keys.close.contains(&k) {
+            if !self.filter.is_empty() {
+                self.filter.clear();
+                self.filter_match = None;
+                self.needs_redraw = true;
+                return false;
+            }
             return true;
         }
-        if (XKB_KEY_1..=XKB_KEY_9).contains(&k) {
+
+        // Confirm: if single window match, focus it directly; else activate workspace
+        if self.keys.confirm.contains(&k) {
+            if let Some(addr) = self.filter_match {
+                let client = self.workspaces.iter()
+                    .flat_map(|ws| ws.clients.iter())
+                    .find(|c| c.address == addr);
+                if let Some(c) = client {
+                    self.pending_focus = Some((c.workspace_id, addr, c.x + c.w / 2, c.y + c.h / 2));
+                    return true;
+                }
+            }
+            if !self.filter.is_empty() {
+                let f = self.filter.to_lowercase();
+                if let Some(i) = self.workspaces.iter().position(|ws| workspace_matches(ws, &f)) {
+                    self.selected = i;
+                }
+            }
+            self.activate_selected_workspace();
+            return true;
+        }
+
+        // Number keys: direct jump (only without filter)
+        if self.filter.is_empty() && (XKB_KEY_1..=XKB_KEY_9).contains(&k) {
             let idx = (k - XKB_KEY_1) as usize;
             if idx < n { ipc::switch_workspace(&self.workspaces[idx]); }
             return true;
         }
-        if self.keys.confirm.contains(&k) {
-            self.activate_selected_workspace();
+
+        // Arrow keys always navigate; hjkl only when filter is empty
+        let is_arrow = matches!(k, XKB_KEY_LEFT | XKB_KEY_RIGHT | XKB_KEY_UP | XKB_KEY_DOWN);
+        if is_arrow || self.filter.is_empty() {
+            if self.keys.right.contains(&k) && self.selected + 1 < n {
+                self.selected += 1; self.needs_redraw = true; return false;
+            }
+            if self.keys.left.contains(&k) && self.selected > 0 {
+                self.selected -= 1; self.needs_redraw = true; return false;
+            }
+            if self.keys.down.contains(&k) && self.selected + cols < n {
+                self.selected += cols; self.needs_redraw = true; return false;
+            }
+            if self.keys.up.contains(&k) && self.selected >= cols {
+                self.selected -= cols; self.needs_redraw = true; return false;
+            }
+        }
+
+        // Move window (only without filter)
+        if self.filter.is_empty() && self.keys.move_window.contains(&k) && self.move_active_window_to_selected() {
             return true;
         }
-        if self.keys.right.contains(&k) && self.selected + 1 < n {
-            self.selected += 1;
+
+        // Printable char: append to filter
+        if let Some(c) = char::from_u32(k).filter(|c| c.is_ascii_graphic() || *c == ' ') {
+            self.filter.push(c);
+            self.update_filter_state();
             self.needs_redraw = true;
-        } else if self.keys.left.contains(&k) && self.selected > 0 {
-            self.selected -= 1;
-            self.needs_redraw = true;
-        } else if self.keys.down.contains(&k) && self.selected + cols < n {
-            self.selected += cols;
-            self.needs_redraw = true;
-        } else if self.keys.up.contains(&k) && self.selected >= cols {
-            self.selected -= cols;
-            self.needs_redraw = true;
-        } else if self.keys.move_window.contains(&k) && self.move_active_window_to_selected() {
-            return true;
         }
+
         false
+    }
+
+    fn update_filter_state(&mut self) {
+        let f = self.filter.to_lowercase();
+        self.filter_match = if f.is_empty() {
+            None
+        } else {
+            find_single_window_match(&self.workspaces, &f)
+        };
+        if let Some(i) = self.workspaces.iter().position(|ws| workspace_matches(ws, &f)) {
+            self.selected = i;
+        }
     }
 
     fn activate_selected_workspace(&self) {
@@ -787,6 +865,7 @@ fn hide(state: &mut AppState) {
     }
     state.configured = false;
     state.visible = false;
+    state.filter.clear();
     state.workspaces.clear();
     state.thumbnails.clear();
 }
@@ -805,6 +884,10 @@ fn redraw(state: &mut AppState, qh: &QueueHandle<AppState>) {
         cfg: &state.config,
         active_window_address: state.active_window_address,
         hovered_window: state.hovered_window,
+        pointer_x: state.pointer_x,
+        pointer_y: state.pointer_y,
+        filter_match: state.filter_match,
+        filter: &state.filter,
     });
 
     let stride = state.width * 4;

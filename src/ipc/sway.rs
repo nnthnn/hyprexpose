@@ -123,6 +123,7 @@ fn collect_views(node: &SwayNode, workspace_id: i32, out: &mut Vec<ClientInfo>) 
         out.push(ClientInfo {
             class_name,
             title: node.name.clone().unwrap_or_default(),
+            initial_title: String::new(),
             address: node.id,
             workspace_id,
             x: node.rect.x,

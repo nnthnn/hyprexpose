@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 pub struct ClientInfo {
     pub class_name: String,
     pub title: String,
+    pub initial_title: String,
     pub address: u64,
     #[allow(dead_code)]
     pub workspace_id: i32,
