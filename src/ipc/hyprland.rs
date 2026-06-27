@@ -213,7 +213,7 @@ pub fn get_active_workspace_name() -> String {
 
 /// Returns the address of the currently focused window, or 0 if none.
 pub fn close_window(address: u64) {
-    dispatch(&format!("closewindow address:0x{address:x}"));
+    dispatch(&format!("hl.dsp.window.close({{ window = \"address:0x{address:x}\" }})"));
 }
 
 pub fn get_active_window_address() -> u64 {
