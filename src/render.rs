@@ -415,3 +415,27 @@ pub fn draw(p: DrawParams<'_>) -> Vec<u8> {
     drop(cr);
     surface.take_data().map(|d| d.to_vec()).unwrap_or_default()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_app_name_strips_reversed_domain() {
+        assert_eq!(clean_app_name("dev.zed.Zed"), "Zed");
+        assert_eq!(clean_app_name("org.gnome.Nautilus"), "Nautilus");
+        assert_eq!(clean_app_name("com.mitchellh.ghostty"), "ghostty");
+    }
+
+    #[test]
+    fn clean_app_name_passthrough_when_no_dot() {
+        assert_eq!(clean_app_name("firefox"), "firefox");
+        assert_eq!(clean_app_name(""), "");
+        assert_eq!(clean_app_name("Alacritty"), "Alacritty");
+    }
+
+    #[test]
+    fn clean_app_name_trailing_dot_returns_empty() {
+        assert_eq!(clean_app_name("foo."), "");
+    }
+}

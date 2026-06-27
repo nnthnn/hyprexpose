@@ -1253,3 +1253,95 @@ fn main() {
 
     hide(&mut state);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ipc::{ClientInfo, WorkspaceInfo};
+
+    fn client(address: u64, class: &str, title: &str) -> ClientInfo {
+        ClientInfo {
+            address,
+            class_name: class.into(),
+            title: title.into(),
+            initial_title: String::new(),
+            workspace_id: 1,
+            x: 0, y: 0, w: 100, h: 100,
+        }
+    }
+
+    fn workspace(name: &str, clients: Vec<ClientInfo>) -> WorkspaceInfo {
+        WorkspaceInfo { id: 1, name: name.into(), monitor_id: 0, clients }
+    }
+
+    // ── workspace_matches ────────────────────────────────────────────────────
+
+    #[test]
+    fn workspace_matches_by_name() {
+        let ws = workspace("web", vec![]);
+        assert!(workspace_matches(&ws, "web"));
+        assert!(workspace_matches(&ws, "we"));
+        assert!(!workspace_matches(&ws, "code"));
+    }
+
+    #[test]
+    fn workspace_matches_by_client_class() {
+        let ws = workspace("1", vec![client(1, "firefox", "New Tab")]);
+        assert!(workspace_matches(&ws, "fire"));
+        assert!(!workspace_matches(&ws, "zed"));
+    }
+
+    #[test]
+    fn workspace_matches_by_client_title() {
+        let ws = workspace("1", vec![client(1, "foot", "nvim — main.rs")]);
+        assert!(workspace_matches(&ws, "nvim"));
+        assert!(!workspace_matches(&ws, "emacs"));
+    }
+
+    #[test]
+    fn workspace_matches_empty_filter_always_true() {
+        let ws = workspace("1", vec![]);
+        assert!(workspace_matches(&ws, ""));
+    }
+
+    // ── find_single_window_match ─────────────────────────────────────────────
+
+    #[test]
+    fn single_match_returns_address() {
+        let workspaces = vec![workspace("1", vec![
+            client(10, "firefox", "GitHub"),
+            client(20, "foot", "nvim"),
+        ])];
+        assert_eq!(find_single_window_match(&workspaces, "fire"), Some(10));
+    }
+
+    #[test]
+    fn multiple_matches_returns_none() {
+        let workspaces = vec![workspace("1", vec![
+            client(10, "firefox", "GitHub"),
+            client(20, "foot", "Firefox bookmarks"),
+        ])];
+        assert_eq!(find_single_window_match(&workspaces, "firefox"), None);
+    }
+
+    #[test]
+    fn no_matches_returns_none() {
+        let workspaces = vec![workspace("1", vec![client(10, "foot", "nvim")])];
+        assert_eq!(find_single_window_match(&workspaces, "zed"), None);
+    }
+
+    #[test]
+    fn single_match_across_workspaces() {
+        let workspaces = vec![
+            workspace("1", vec![client(10, "foot", "nvim")]),
+            workspace("2", vec![client(20, "firefox", "GitHub")]),
+        ];
+        assert_eq!(find_single_window_match(&workspaces, "github"), Some(20));
+    }
+
+    #[test]
+    fn match_is_case_insensitive() {
+        let workspaces = vec![workspace("1", vec![client(10, "Alacritty", "bash")])];
+        assert_eq!(find_single_window_match(&workspaces, "ALACRITTY"), Some(10));
+    }
+}
