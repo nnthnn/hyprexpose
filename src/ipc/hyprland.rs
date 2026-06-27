@@ -212,6 +212,10 @@ pub fn get_active_workspace_name() -> String {
 }
 
 /// Returns the address of the currently focused window, or 0 if none.
+pub fn close_window(address: u64) {
+    dispatch(&format!("closewindow address:0x{address:x}"));
+}
+
 pub fn get_active_window_address() -> u64 {
     let json = hypr_request("activewindow").unwrap_or_default();
     // Hyprland returns `{}` when no window is focused

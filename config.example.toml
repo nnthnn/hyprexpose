@@ -91,7 +91,8 @@ left        = ["Left", "h"]
 right       = ["Right", "l"]
 up          = ["Up", "k"]
 down        = ["Down", "j"]
-move_window = "m"
+move_window   = "m"
+close_window  = "Delete"   # close the hovered window (or the single filter match)
 
 # ── Behavior ──────────────────────────────────────────────────────────────────
 

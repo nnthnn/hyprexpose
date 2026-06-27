@@ -98,3 +98,10 @@ pub fn get_active_window_address() -> u64 {
         Compositor::Sway => sway::get_active_window_address(),
     }
 }
+
+pub fn close_window(address: u64) {
+    match compositor() {
+        Compositor::Hyprland => hyprland::close_window(address),
+        Compositor::Sway => sway::close_window(address),
+    }
+}

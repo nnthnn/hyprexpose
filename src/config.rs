@@ -196,37 +196,41 @@ fn default_left()        -> Vec<String> { vec!["Left".into(), "h".into()] }
 fn default_right()       -> Vec<String> { vec!["Right".into(), "l".into()] }
 fn default_up()          -> Vec<String> { vec!["Up".into(), "k".into()] }
 fn default_down()        -> Vec<String> { vec!["Down".into(), "j".into()] }
-fn default_move_window() -> Vec<String> { vec!["m".into()] }
+fn default_move_window()   -> Vec<String> { vec!["m".into()] }
+fn default_close_window()  -> Vec<String> { vec!["Delete".into()] }
 
 #[derive(Deserialize, Clone)]
 #[serde(default)]
 pub struct KeybindingsConfig {
-    #[serde(default = "default_close",       deserialize_with = "deserialize_key_list")]
+    #[serde(default = "default_close",        deserialize_with = "deserialize_key_list")]
     pub close: Vec<String>,
-    #[serde(default = "default_confirm",     deserialize_with = "deserialize_key_list")]
+    #[serde(default = "default_confirm",      deserialize_with = "deserialize_key_list")]
     pub confirm: Vec<String>,
-    #[serde(default = "default_left",        deserialize_with = "deserialize_key_list")]
+    #[serde(default = "default_left",         deserialize_with = "deserialize_key_list")]
     pub left: Vec<String>,
-    #[serde(default = "default_right",       deserialize_with = "deserialize_key_list")]
+    #[serde(default = "default_right",        deserialize_with = "deserialize_key_list")]
     pub right: Vec<String>,
-    #[serde(default = "default_up",          deserialize_with = "deserialize_key_list")]
+    #[serde(default = "default_up",           deserialize_with = "deserialize_key_list")]
     pub up: Vec<String>,
-    #[serde(default = "default_down",        deserialize_with = "deserialize_key_list")]
+    #[serde(default = "default_down",         deserialize_with = "deserialize_key_list")]
     pub down: Vec<String>,
-    #[serde(default = "default_move_window", deserialize_with = "deserialize_key_list")]
+    #[serde(default = "default_move_window",  deserialize_with = "deserialize_key_list")]
     pub move_window: Vec<String>,
+    #[serde(default = "default_close_window", deserialize_with = "deserialize_key_list")]
+    pub close_window: Vec<String>,
 }
 
 impl Default for KeybindingsConfig {
     fn default() -> Self {
         Self {
-            close:       default_close(),
-            confirm:     default_confirm(),
-            left:        default_left(),
-            right:       default_right(),
-            up:          default_up(),
-            down:        default_down(),
-            move_window: default_move_window(),
+            close:        default_close(),
+            confirm:      default_confirm(),
+            left:         default_left(),
+            right:        default_right(),
+            up:           default_up(),
+            down:         default_down(),
+            move_window:  default_move_window(),
+            close_window: default_close_window(),
         }
     }
 }

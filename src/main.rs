@@ -71,6 +71,7 @@ const XKB_KEY_LEFT:      u32 = 0xff51;
 const XKB_KEY_UP:        u32 = 0xff52;
 const XKB_KEY_RIGHT:     u32 = 0xff53;
 const XKB_KEY_DOWN:      u32 = 0xff54;
+const XKB_KEY_DELETE:    u32 = 0xffff;
 const XKB_KEY_1: u32 = 0x0031;
 const XKB_KEY_9: u32 = 0x0039;
 
@@ -83,6 +84,7 @@ fn key_name_to_keysym(name: &str) -> Option<u32> {
         "Right"          => Some(XKB_KEY_RIGHT),
         "Down"           => Some(XKB_KEY_DOWN),
         "space" | "Space" => Some(0x0020),
+        "Delete"          => Some(XKB_KEY_DELETE),
         _ if name.len() == 1 => {
             let c = name.chars().next()?;
             if c.is_ascii_graphic() { Some(c as u32) } else { None }
@@ -96,25 +98,27 @@ fn resolve_keys(names: &[String]) -> Vec<u32> {
 }
 
 struct ResolvedKeys {
-    close:       Vec<u32>,
-    confirm:     Vec<u32>,
-    left:        Vec<u32>,
-    right:       Vec<u32>,
-    up:          Vec<u32>,
-    down:        Vec<u32>,
-    move_window: Vec<u32>,
+    close:        Vec<u32>,
+    confirm:      Vec<u32>,
+    left:         Vec<u32>,
+    right:        Vec<u32>,
+    up:           Vec<u32>,
+    down:         Vec<u32>,
+    move_window:  Vec<u32>,
+    close_window: Vec<u32>,
 }
 
 impl ResolvedKeys {
     fn from_config(kb: &config::KeybindingsConfig) -> Self {
         Self {
-            close:       resolve_keys(&kb.close),
-            confirm:     resolve_keys(&kb.confirm),
-            left:        resolve_keys(&kb.left),
-            right:       resolve_keys(&kb.right),
-            up:          resolve_keys(&kb.up),
-            down:        resolve_keys(&kb.down),
-            move_window: resolve_keys(&kb.move_window),
+            close:        resolve_keys(&kb.close),
+            confirm:      resolve_keys(&kb.confirm),
+            left:         resolve_keys(&kb.left),
+            right:        resolve_keys(&kb.right),
+            up:           resolve_keys(&kb.up),
+            down:         resolve_keys(&kb.down),
+            move_window:  resolve_keys(&kb.move_window),
+            close_window: resolve_keys(&kb.close_window),
         }
     }
 }
@@ -143,6 +147,7 @@ fn keycode_to_keysym(keycode: u32) -> u32 {
         // bottom row: z x c v b n m
         44 => 0x7a, 45 => 0x78, 46 => 0x63, 47 => 0x76, 48 => 0x62,
         49 => 0x6e, 50 => 0x6d,
+        111 => XKB_KEY_DELETE,
         _  => 0,
     }
 }
@@ -420,6 +425,21 @@ impl AppState {
         // Move window (only without filter)
         if self.filter.is_empty() && self.keys.move_window.contains(&k) && self.move_active_window_to_selected() {
             return true;
+        }
+
+        // Close window: target hovered window first, then single filter match
+        if self.keys.close_window.contains(&k) {
+            let addr = self.hovered_window.or(self.filter_match);
+            if let Some(addr) = addr {
+                ipc::close_window(addr);
+                for ws in &mut self.workspaces {
+                    ws.clients.retain(|c| c.address != addr);
+                }
+                if self.hovered_window == Some(addr) { self.hovered_window = None; }
+                self.update_filter_state();
+                self.needs_redraw = true;
+            }
+            return false;
         }
 
         // Printable char: append to filter
