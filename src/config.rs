@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use std::path::PathBuf;
+use std::ffi::CStr;
 
 /// RGBA color represented as four f64 values in [0.0, 1.0].
 #[derive(Clone, Copy, Deserialize)]
@@ -282,12 +283,28 @@ impl Config {
     }
 }
 
+fn home_dir() -> PathBuf {
+    if let Ok(h) = std::env::var("HOME") {
+        return PathBuf::from(h);
+    }
+    // $HOME not set (e.g. launched from compositor before session env is ready);
+    // look up the home directory from the passwd database instead.
+    unsafe {
+        let uid = libc::getuid();
+        let pw = libc::getpwuid(uid);
+        if !pw.is_null() {
+            let dir = CStr::from_ptr((*pw).pw_dir);
+            if let Ok(s) = dir.to_str() {
+                return PathBuf::from(s);
+            }
+        }
+    }
+    PathBuf::from("/root")
+}
+
 fn config_path() -> PathBuf {
     let base = std::env::var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
-            PathBuf::from(home).join(".config")
-        });
+        .unwrap_or_else(|_| home_dir().join(".config"));
     base.join("hyprexpose").join("config.toml")
 }
