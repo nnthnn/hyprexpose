@@ -74,6 +74,8 @@ pub struct AppearanceConfig {
     pub thumb_padding: f64,
     /// Width of the selection highlight border (px).
     pub select_border: f64,
+    /// Gap between adjacent window thumbnails within a card (px).
+    pub window_gap: f64,
     /// Base font family used for the hover tooltip (size suffixes are appended automatically).
     pub tooltip_font: String,
 }
@@ -90,6 +92,7 @@ impl Default for AppearanceConfig {
             label_height: 32.0,
             thumb_padding: 8.0,
             select_border: 3.0,
+            window_gap: 4.0,
             tooltip_font: "Sans".into(),
         }
     }
@@ -112,6 +115,8 @@ pub struct ColorsConfig {
     pub window_label: Color,
     /// Border drawn around the active window thumbnail (the one 'm' will move).
     pub active_window: Color,
+    /// Subtle border drawn around every window thumbnail.
+    pub window_border: Color,
     /// Border drawn around the hovered window thumbnail.
     pub hover_border: Color,
     /// Brightness tint overlaid on the hovered window thumbnail.
@@ -136,6 +141,7 @@ impl Default for ColorsConfig {
             empty_label:        Color::Array([0.5,  0.5,  0.55, 0.8 ]),
             window_label:       Color::Array([1.0,  1.0,  1.0,  0.9 ]),
             active_window:      Color::Array([1.0,  0.75, 0.2,  0.95]),
+            window_border:      Color::Array([1.0,  1.0,  1.0,  0.15]),
             hover_border:       Color::Array([1.0,  1.0,  1.0,  0.6 ]),
             hover_overlay:      Color::Array([1.0,  1.0,  1.0,  0.15]),
             tooltip_background: Color::Array([0.06, 0.06, 0.10, 0.95]),

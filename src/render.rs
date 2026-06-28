@@ -51,10 +51,12 @@ fn draw_client(
     filter: &str,
     window_font: &pango::FontDescription,
 ) {
-    let rx = off_x + (client.x - min_x) as f64 * scale;
-    let ry = off_y + (client.y - min_y) as f64 * scale;
-    let rw = client.w as f64 * scale;
-    let rh = client.h as f64 * scale;
+    // Inset each thumbnail by half the gap so adjacent windows have a full gap between them
+    let g = cfg.appearance.window_gap / 2.0;
+    let rx = off_x + (client.x - min_x) as f64 * scale + g;
+    let ry = off_y + (client.y - min_y) as f64 * scale + g;
+    let rw = (client.w as f64 * scale - g * 2.0).max(1.0);
+    let rh = (client.h as f64 * scale - g * 2.0).max(1.0);
 
     // Window thumbnail or fallback colored rect
     if let Some(thumb) = find_thumb(thumbnails, client.address) {
@@ -80,12 +82,19 @@ fn draw_client(
             .bytes()
             .fold(0u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32));
         let r = 0.2 + (hash % 100) as f64 / 200.0;
-        let g = 0.2 + ((hash / 100) % 100) as f64 / 200.0;
+        let gr = 0.2 + ((hash / 100) % 100) as f64 / 200.0;
         let b = 0.3 + ((hash / 10000) % 100) as f64 / 200.0;
         rounded_rect(cr, rx, ry, rw, rh, 4.0);
-        cr.set_source_rgba(r, g, b, 0.85);
+        cr.set_source_rgba(r, gr, b, 0.85);
         cr.fill().ok();
     }
+
+    // Default window border (sits in the gap)
+    let (wr, wg, wb, wa) = cfg.colors.window_border.rgba();
+    rounded_rect(cr, rx, ry, rw, rh, 4.0);
+    cr.set_source_rgba(wr, wg, wb, wa);
+    cr.set_line_width(1.0);
+    cr.stroke().ok();
 
     // Active-window indicator
     if active_window_address != 0 && client.address == active_window_address {

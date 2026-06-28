@@ -34,6 +34,7 @@ thumb_padding = 8.0
 
 # Width of the selection highlight border drawn around the active card (px).
 select_border = 3.0
+window_gap    = 4.0    # gap between adjacent window thumbnails (px); border sits in this space
 
 # ── Colors ────────────────────────────────────────────────────────────────────
 # Colors can be written as:
@@ -64,6 +65,9 @@ window_label = "#ffffffe6"
 # Coloured border drawn around the window that will be moved when you press 'm'.
 # Set the alpha to 00 to disable the indicator entirely.
 active_window = "#ffbf33f2"    # amber
+
+# Subtle border drawn around every window thumbnail.
+window_border = "#ffffff26"
 
 # Border drawn around the window thumbnail currently under the cursor.
 hover_border = "#ffffff99"
