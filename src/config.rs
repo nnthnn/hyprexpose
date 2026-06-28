@@ -302,7 +302,7 @@ fn home_dir() -> PathBuf {
     PathBuf::from("/root")
 }
 
-fn config_path() -> PathBuf {
+pub fn config_path() -> PathBuf {
     let base = std::env::var("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| home_dir().join(".config"));

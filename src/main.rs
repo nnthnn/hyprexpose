@@ -1181,6 +1181,31 @@ fn main() {
 
     let display_fd = conn.as_fd().as_raw_fd();
 
+    // Watch the config file's parent directory for writes/renames so we can
+    // auto-reload when the file changes. Editors often do atomic saves by
+    // writing a temp file then renaming it, so IN_MOVED_TO is essential.
+    let config_path = config::config_path();
+    let config_filename = config_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("config.toml")
+        .to_owned();
+    let inotify_fd = unsafe {
+        let fd = libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC);
+        if fd >= 0 {
+            if let Some(dir) = config_path.parent() {
+                if let Ok(cpath) = std::ffi::CString::new(dir.as_os_str().as_encoded_bytes()) {
+                    libc::inotify_add_watch(
+                        fd,
+                        cpath.as_ptr(),
+                        libc::IN_CLOSE_WRITE | libc::IN_MOVED_TO,
+                    );
+                }
+            }
+        }
+        fd
+    };
+
     'main: loop {
         if G_QUIT.load(Ordering::Relaxed) {
             break;
@@ -1267,13 +1292,13 @@ fn main() {
             std::ptr::null()
         };
 
-        let mut pollfd = libc::pollfd {
-            fd: display_fd,
-            events: libc::POLLIN,
-            revents: 0,
-        };
+        let mut pollfds = [
+            libc::pollfd { fd: display_fd,  events: libc::POLLIN, revents: 0 },
+            libc::pollfd { fd: inotify_fd,  events: libc::POLLIN, revents: 0 },
+        ];
+        let nfds = if inotify_fd >= 0 { 2u64 } else { 1u64 };
 
-        let ret = unsafe { libc::ppoll(&mut pollfd, 1, poll_timeout, &unblocked_mask) };
+        let ret = unsafe { libc::ppoll(pollfds.as_mut_ptr(), nfds, poll_timeout, &unblocked_mask) };
 
         if ret < 0 {
             drop(guard);
@@ -1286,7 +1311,33 @@ fn main() {
             break 'main;
         }
 
-        if pollfd.revents & libc::POLLIN != 0 {
+        // Check inotify before Wayland so a config change doesn't race a redraw
+        if inotify_fd >= 0 && pollfds[1].revents & libc::POLLIN != 0 {
+            let mut buf = [0u8; 4096];
+            let n = unsafe {
+                libc::read(inotify_fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
+            };
+            if n > 0 {
+                let ev_size = std::mem::size_of::<libc::inotify_event>();
+                let mut offset = 0usize;
+                while offset + ev_size <= n as usize {
+                    let ev = unsafe { &*(buf.as_ptr().add(offset) as *const libc::inotify_event) };
+                    let name_len = ev.len as usize;
+                    if name_len > 0 {
+                        let name_bytes = &buf[offset + ev_size..offset + ev_size + name_len];
+                        let nul = name_bytes.iter().position(|&b| b == 0).unwrap_or(name_len);
+                        if let Ok(name) = std::str::from_utf8(&name_bytes[..nul]) {
+                            if name == config_filename {
+                                G_RELOAD.store(true, Ordering::Relaxed);
+                            }
+                        }
+                    }
+                    offset += ev_size + name_len;
+                }
+            }
+        }
+
+        if pollfds[0].revents & libc::POLLIN != 0 {
             guard.read().ok();
         } else {
             drop(guard);
