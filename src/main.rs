@@ -53,10 +53,13 @@ use hyprland_toplevel_export_frame_v1::HyprlandToplevelExportFrameV1;
 
 static G_QUIT: AtomicBool = AtomicBool::new(false);
 static G_TOGGLE: AtomicBool = AtomicBool::new(false);
+static G_RELOAD: AtomicBool = AtomicBool::new(false);
 
 unsafe extern "C" fn sig_handler(sig: libc::c_int) {
     if sig == libc::SIGUSR1 {
         G_TOGGLE.store(true, Ordering::Relaxed);
+    } else if sig == libc::SIGHUP {
+        G_RELOAD.store(true, Ordering::Relaxed);
     } else {
         G_QUIT.store(true, Ordering::Relaxed);
     }
@@ -1128,7 +1131,8 @@ fn main() {
         sa.sa_sigaction = sig_handler as *const () as libc::sighandler_t;
         libc::sigemptyset(&mut sa.sa_mask);
         libc::sigaction(libc::SIGUSR1, &sa, std::ptr::null_mut());
-        libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
+        libc::sigaction(libc::SIGHUP,  &sa, std::ptr::null_mut());
+        libc::sigaction(libc::SIGINT,  &sa, std::ptr::null_mut());
         libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
 
         // Block these signals normally; ppoll atomically unblocks them during
@@ -1136,6 +1140,7 @@ fn main() {
         let mut block_mask: libc::sigset_t = std::mem::zeroed();
         libc::sigemptyset(&mut block_mask);
         libc::sigaddset(&mut block_mask, libc::SIGUSR1);
+        libc::sigaddset(&mut block_mask, libc::SIGHUP);
         libc::sigaddset(&mut block_mask, libc::SIGINT);
         libc::sigaddset(&mut block_mask, libc::SIGTERM);
         libc::sigprocmask(libc::SIG_BLOCK, &block_mask, std::ptr::null_mut());
@@ -1170,7 +1175,7 @@ fn main() {
     }
 
     eprintln!(
-        "hyprexpose: daemon running on {} (send SIGUSR1 to toggle)",
+        "hyprexpose: daemon running on {} (SIGUSR1 to toggle, SIGHUP to reload config)",
         ipc::compositor().name()
     );
 
@@ -1179,6 +1184,14 @@ fn main() {
     'main: loop {
         if G_QUIT.load(Ordering::Relaxed) {
             break;
+        }
+
+        if G_RELOAD.swap(false, Ordering::Relaxed) {
+            let new_config = Config::load();
+            state.keys = ResolvedKeys::from_config(&new_config.keybindings);
+            state.config = new_config;
+            if state.visible { state.needs_redraw = true; }
+            eprintln!("hyprexpose: config reloaded");
         }
 
         if G_TOGGLE.swap(false, Ordering::Relaxed) {
