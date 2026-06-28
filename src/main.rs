@@ -895,10 +895,21 @@ fn redraw(state: &mut AppState, qh: &QueueHandle<AppState>) {
         return;
     }
 
+    let visible_workspaces: Vec<_>;
+    let workspaces_to_draw: &[_] = if state.config.behavior.show_empty_workspaces {
+        &state.workspaces
+    } else {
+        visible_workspaces = state.workspaces.iter()
+            .filter(|ws| !ws.clients.is_empty())
+            .cloned()
+            .collect();
+        &visible_workspaces
+    };
+
     let pixels = render::draw(render::DrawParams {
         width: state.width,
         height: state.height,
-        workspaces: &state.workspaces,
+        workspaces: workspaces_to_draw,
         selected_index: state.selected,
         thumbnails: &state.thumbnails,
         cfg: &state.config,

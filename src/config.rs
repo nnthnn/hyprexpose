@@ -156,6 +156,8 @@ pub struct BehaviorConfig {
     /// right-click to move the active window). Overridden by the
     /// `--allow-mouse` CLI flag when set.
     pub allow_mouse: bool,
+    /// Show workspace cards that have no windows. Defaults to false.
+    pub show_empty_workspaces: bool,
 }
 
 impl Default for BehaviorConfig {
@@ -164,6 +166,7 @@ impl Default for BehaviorConfig {
             no_preview: false,
             switch_on_move: true,
             allow_mouse: false,
+            show_empty_workspaces: false,
         }
     }
 }

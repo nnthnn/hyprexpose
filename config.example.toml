@@ -113,3 +113,7 @@ switch_on_move = true
 #   - right-click  → move the active window to that workspace
 # The `--allow-mouse` CLI flag forces this on regardless of the value here.
 allow_mouse = false
+
+# Show workspace cards that have no open windows.
+# Default is false — empty workspaces are hidden.
+show_empty_workspaces = false
