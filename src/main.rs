@@ -1110,7 +1110,20 @@ fn advance_capture(conn: &Connection, state: &mut AppState, qh: &QueueHandle<App
 
 // ── main ─────────────────────────────────────────────────────────────────────
 
+fn try_lock_instance() -> Option<std::fs::File> {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
+    let path = format!("{runtime_dir}/hyprexpose.lock");
+    let file = std::fs::OpenOptions::new().create(true).write(true).open(&path).ok()?;
+    let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if ret == 0 { Some(file) } else { None }
+}
+
 fn main() {
+    let _lock = match try_lock_instance() {
+        Some(f) => f,
+        None => std::process::exit(0),
+    };
+
     let mut no_preview = false;
     let mut allow_mouse = false;
     for arg in std::env::args().skip(1) {
