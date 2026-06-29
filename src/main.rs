@@ -138,18 +138,23 @@ fn keycode_to_keysym(keycode: u32) -> u32 {
         105 => XKB_KEY_LEFT,
         106 => XKB_KEY_RIGHT,
         108 => XKB_KEY_DOWN,
-        // digits 1-9 (evdev 2-10) and 0 (11)
+        // digits 1-9 (evdev 2-10) and 0 (11); - = (12-13)
         2  => 0x31, 3  => 0x32, 4  => 0x33, 5  => 0x34, 6  => 0x35,
         7  => 0x36, 8  => 0x37, 9  => 0x38, 10 => 0x39, 11 => 0x30,
-        // top row: q w e r t y u i o p
+        12 => 0x2d, 13 => 0x3d,
+        // top row: q w e r t y u i o p [ ]
         16 => 0x71, 17 => 0x77, 18 => 0x65, 19 => 0x72, 20 => 0x74,
         21 => 0x79, 22 => 0x75, 23 => 0x69, 24 => 0x6f, 25 => 0x70,
-        // home row: a s d f g h j k l
+        26 => 0x5b, 27 => 0x5d,
+        // home row: a s d f g h j k l ; ' `
         30 => 0x61, 31 => 0x73, 32 => 0x64, 33 => 0x66, 34 => 0x67,
         35 => 0x68, 36 => 0x6a, 37 => 0x6b, 38 => 0x6c,
-        // bottom row: z x c v b n m
+        39 => 0x3b, 40 => 0x27, 41 => 0x60,
+        // bottom row: \ z x c v b n m , . /
+        43 => 0x5c,
         44 => 0x7a, 45 => 0x78, 46 => 0x63, 47 => 0x76, 48 => 0x62,
         49 => 0x6e, 50 => 0x6d,
+        51 => 0x2c, 52 => 0x2e, 53 => 0x2f,
         111 => XKB_KEY_DELETE,
         _  => 0,
     }
@@ -357,7 +362,7 @@ impl AppState {
     fn handle_key(&mut self, keysym: u32) -> bool {
         let n = self.workspaces.len();
         if n == 0 { return true; }
-        let cols = ((n as f64).sqrt().ceil() as usize).max(1);
+        let cols = if self.config.appearance.columns > 0 { self.config.appearance.columns.min(n) } else { ((n as f64).sqrt().ceil() as usize).max(1) };
         let k = keysym;
 
         // Backspace: pop filter char
@@ -493,7 +498,7 @@ impl AppState {
             return None;
         }
 
-        let cols = ((n as f64).sqrt().ceil() as usize).max(1);
+        let cols = if self.config.appearance.columns > 0 { self.config.appearance.columns.min(n) } else { ((n as f64).sqrt().ceil() as usize).max(1) };
         let rows = n.div_ceil(cols);
         let pad = self.config.appearance.card_padding;
 
@@ -535,7 +540,7 @@ impl AppState {
         if n == 0 || self.width == 0 || self.height == 0 {
             return None;
         }
-        let cols = ((n as f64).sqrt().ceil() as usize).max(1);
+        let cols = if self.config.appearance.columns > 0 { self.config.appearance.columns.min(n) } else { ((n as f64).sqrt().ceil() as usize).max(1) };
         let rows = n.div_ceil(cols);
         let pad = self.config.appearance.card_padding;
         let card_w = ((self.width as f64 - pad * (cols + 1) as f64) / cols as f64)
@@ -1110,32 +1115,57 @@ fn advance_capture(conn: &Connection, state: &mut AppState, qh: &QueueHandle<App
 
 // ── main ─────────────────────────────────────────────────────────────────────
 
-fn try_lock_instance() -> Option<std::fs::File> {
+fn lock_file_path() -> String {
     let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
-    let path = format!("{runtime_dir}/hyprexpose.lock");
-    let file = std::fs::OpenOptions::new().create(true).write(true).open(&path).ok()?;
+    format!("{runtime_dir}/hyprexpose.lock")
+}
+
+fn try_lock_instance() -> Option<std::fs::File> {
+    use std::io::Write;
+    let file = std::fs::OpenOptions::new().create(true).write(true).open(lock_file_path()).ok()?;
     let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-    if ret == 0 { Some(file) } else { None }
+    if ret != 0 { return None; }
+    // Write PID so --toggle can find us
+    (&file).write_all(std::process::id().to_string().as_bytes()).ok();
+    Some(file)
+}
+
+fn send_toggle() {
+    let path = lock_file_path();
+    let Ok(file) = std::fs::OpenOptions::new().write(true).read(true).create(true).open(&path) else { return };
+    let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if ret == 0 {
+        // Got the lock — no daemon running, release and exit
+        unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };
+        return;
+    }
+    drop(file);
+    if let Ok(s) = std::fs::read_to_string(&path) {
+        if let Ok(pid) = s.trim().parse::<i32>() {
+            unsafe { libc::kill(pid, libc::SIGUSR1) };
+        }
+    }
 }
 
 fn main() {
-    let _lock = match try_lock_instance() {
-        Some(f) => f,
-        None => std::process::exit(0),
-    };
-
     let mut no_preview = false;
     let mut allow_mouse = false;
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
+            "--toggle"     => { send_toggle(); std::process::exit(0); }
             "--no-preview" => no_preview = true,
             "--allow-mouse" => allow_mouse = true,
             _ => {
-                eprintln!("Usage: hyprexpose [--no-preview] [--allow-mouse]");
+                eprintln!("Usage: hyprexpose [--toggle] [--no-preview] [--allow-mouse]");
                 std::process::exit(1);
             }
         }
     }
+
+    let _lock = match try_lock_instance() {
+        Some(f) => f,
+        None => std::process::exit(0),
+    };
 
     // Install signal handlers and block them outside ppoll to eliminate the race
     // where a signal fires between the G_TOGGLE check and the poll call.
@@ -1290,15 +1320,21 @@ fn main() {
 
         // Poll for events using prepare_read. Use a short timeout while
         // captures are pending so we can check for per-capture timeouts.
+        let capturing = state.active_capture.is_some() || !state.capture_queue.is_empty();
         let guard = match eq.prepare_read() {
             Some(g) => g,
             None => {
                 eq.dispatch_pending(&mut state).ok();
+                // If there's nothing happening, yield so we don't busy-spin
+                // when the compositor keeps sending bookkeeping events (buffer
+                // releases, delete_ids, etc.) faster than ppoll can throttle us.
+                if !state.visible && !capturing {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
                 continue;
             }
         };
 
-        let capturing = state.active_capture.is_some() || !state.capture_queue.is_empty();
         let poll_timeout = if capturing {
             &libc::timespec { tv_sec: 0, tv_nsec: 50_000_000 } as *const libc::timespec
         } else {
@@ -1348,6 +1384,11 @@ fn main() {
                     offset += ev_size + name_len;
                 }
             }
+        }
+
+        if pollfds[0].revents & (libc::POLLHUP | libc::POLLERR) != 0 {
+            drop(guard);
+            break 'main;
         }
 
         if pollfds[0].revents & libc::POLLIN != 0 {

@@ -132,7 +132,12 @@ fn draw_client(
     // Window label (class name or title)
     if rw > 40.0 && rh > 20.0 {
         let layout = pangocairo::functions::create_layout(cr);
-        let name = if !client.initial_title.is_empty() {
+        const GENERIC_TITLES: &[&str] = &[
+            "New Window", "New Tab", "Window", "window", "Untitled",
+        ];
+        let initial_ok = !client.initial_title.is_empty()
+            && !GENERIC_TITLES.contains(&client.initial_title.as_str());
+        let name = if initial_ok {
             client.initial_title.as_str()
         } else if !client.class_name.is_empty() {
             clean_app_name(&client.class_name)
@@ -208,7 +213,8 @@ pub fn draw(p: DrawParams<'_>) -> Vec<u8> {
     }
 
     let n = workspaces.len();
-    let cols = ((n as f64).sqrt().ceil() as usize).max(1);
+    let cols = if cfg.appearance.columns > 0 { cfg.appearance.columns.min(n) }
+               else { ((n as f64).sqrt().ceil() as usize).max(1) };
     let rows = n.div_ceil(cols);
     let pad = cfg.appearance.card_padding;
 
@@ -330,8 +336,16 @@ pub fn draw(p: DrawParams<'_>) -> Vec<u8> {
     if let Some(addr) = hovered_window {
         let client = workspaces.iter().flat_map(|ws| ws.clients.iter()).find(|c| c.address == addr);
         if let Some(c) = client {
-            let app = if !c.initial_title.is_empty() { c.initial_title.as_str() }
-                      else { clean_app_name(&c.class_name) };
+            const GENERIC_TITLES: &[&str] = &[
+                "New Window", "New Tab", "Window", "window", "Untitled",
+            ];
+            let app = if !c.initial_title.is_empty()
+                && !GENERIC_TITLES.contains(&c.initial_title.as_str())
+            {
+                c.initial_title.as_str()
+            } else {
+                clean_app_name(&c.class_name)
+            };
             let full_class = c.class_name.as_str();
             let show_class = full_class != app && !full_class.is_empty();
 
@@ -403,22 +417,60 @@ pub fn draw(p: DrawParams<'_>) -> Vec<u8> {
 
     // Filter bar
     if !filter.is_empty() {
-        let layout = pangocairo::functions::create_layout(&cr);
-        let text = format!("  {}  ", filter);
-        layout.set_text(&text);
+        let f = filter.to_lowercase();
+        let matched_ws: Vec<&str> = workspaces.iter()
+            .filter(|ws| {
+                ws.name.to_lowercase().contains(&f)
+                    || ws.clients.iter().any(|c| {
+                        c.class_name.to_lowercase().contains(&f)
+                            || c.title.to_lowercase().contains(&f)
+                    })
+            })
+            .map(|ws| ws.name.as_str())
+            .collect();
+
         let bar_font = pango::FontDescription::from_string("Sans 14");
-        layout.set_font_description(Some(&bar_font));
-        let (tw, th) = layout.pixel_size();
-        let bw = tw as f64 + 24.0;
-        let bh = th as f64 + 16.0;
+
+        let filter_layout = pangocairo::functions::create_layout(&cr);
+        filter_layout.set_text(filter);
+        filter_layout.set_font_description(Some(&bar_font));
+        let (ftw, fth) = filter_layout.pixel_size();
+
+        let ws_suffix = if !matched_ws.is_empty() {
+            format!("  ·  {}", matched_ws.join(", "))
+        } else {
+            String::new()
+        };
+        let ws_layout = if !ws_suffix.is_empty() {
+            let l = pangocairo::functions::create_layout(&cr);
+            l.set_text(&ws_suffix);
+            l.set_font_description(Some(&bar_font));
+            Some(l)
+        } else {
+            None
+        };
+        let wstw = ws_layout.as_ref().map(|l| l.pixel_size().0).unwrap_or(0);
+
+        let pad_x = 20.0;
+        let pad_y = 10.0;
+        let bw = ftw as f64 + wstw as f64 + pad_x * 2.0;
+        let bh = fth as f64 + pad_y * 2.0;
         let bx = (width as f64 - bw) / 2.0;
         let by = 24.0;
+
         rounded_rect(&cr, bx, by, bw, bh, bh / 2.0);
         cr.set_source_rgba(0.08, 0.08, 0.12, 0.92);
         cr.fill().ok();
+
         cr.set_source_rgba(1.0, 1.0, 1.0, 0.9);
-        cr.move_to(bx + (bw - tw as f64) / 2.0, by + (bh - th as f64) / 2.0);
-        pangocairo::functions::show_layout(&cr, &layout);
+        cr.move_to(bx + pad_x, by + pad_y);
+        pangocairo::functions::show_layout(&cr, &filter_layout);
+
+        if let Some(wsl) = &ws_layout {
+            cr.set_source_rgba(0.7, 0.75, 0.85, 0.6);
+            cr.move_to(bx + pad_x + ftw as f64, by + pad_y);
+            pangocairo::functions::show_layout(&cr, wsl);
+        }
     }
 
     drop(cr);

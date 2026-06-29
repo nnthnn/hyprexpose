@@ -76,6 +76,8 @@ pub struct AppearanceConfig {
     pub select_border: f64,
     /// Gap between adjacent window thumbnails within a card (px).
     pub window_gap: f64,
+    /// Fixed number of columns in the workspace grid. 0 = auto (sqrt of workspace count).
+    pub columns: usize,
     /// Base font family used for the hover tooltip (size suffixes are appended automatically).
     pub tooltip_font: String,
 }
@@ -93,6 +95,7 @@ impl Default for AppearanceConfig {
             thumb_padding: 8.0,
             select_border: 3.0,
             window_gap: 4.0,
+            columns: 0,
             tooltip_font: "Sans".into(),
         }
     }
