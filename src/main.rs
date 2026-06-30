@@ -1122,17 +1122,18 @@ fn lock_file_path() -> String {
 
 fn try_lock_instance() -> Option<std::fs::File> {
     use std::io::Write;
-    let file = std::fs::OpenOptions::new().create(true).write(true).open(lock_file_path()).ok()?;
+    let file = std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(lock_file_path()).ok()?;
     let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
     if ret != 0 { return None; }
-    // Write PID so --toggle can find us
+    // Now that we hold the lock, replace any stale PID with ours so --toggle can find us.
+    file.set_len(0).ok();
     (&file).write_all(std::process::id().to_string().as_bytes()).ok();
     Some(file)
 }
 
 fn send_toggle() {
     let path = lock_file_path();
-    let Ok(file) = std::fs::OpenOptions::new().write(true).read(true).create(true).open(&path) else { return };
+    let Ok(file) = std::fs::OpenOptions::new().write(true).read(true).create(true).truncate(false).open(&path) else { return };
     let ret = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
     if ret == 0 {
         // Got the lock — no daemon running, release and exit
