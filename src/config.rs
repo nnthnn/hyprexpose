@@ -282,11 +282,57 @@ impl Config {
         let Ok(text) = std::fs::read_to_string(&path) else {
             return Self::default();
         };
+
+        // Warn on unknown keys before serde silently drops them.
+        Self::warn_unknown_keys(&text, &path.display().to_string());
+
         match toml::from_str::<Config>(&text) {
             Ok(c) => c,
             Err(e) => {
                 eprintln!("hyprexpose: config parse error in {}: {e}", path.display());
                 Self::default()
+            }
+        }
+    }
+
+    fn warn_unknown_keys(text: &str, path: &str) {
+        const SECTIONS: &[(&str, &[&str])] = &[
+            ("appearance", &[
+                "font", "label_font", "tooltip_font",
+                "card_padding", "card_radius", "max_card_width", "max_card_height",
+                "label_height", "thumb_padding", "select_border", "window_gap", "columns",
+            ]),
+            ("colors", &[
+                "background", "card", "selection", "label", "empty_label",
+                "window_label", "active_window", "window_border",
+                "hover_border", "hover_overlay",
+                "tooltip_background", "tooltip_name", "tooltip_class", "tooltip_title",
+            ]),
+            ("behavior", &[
+                "no_preview", "switch_on_move", "allow_mouse", "show_empty_workspaces",
+            ]),
+            ("keybindings", &[
+                "close", "confirm", "left", "right", "up", "down",
+                "move_window", "close_window",
+            ]),
+        ];
+        let known_sections: Vec<&str> = SECTIONS.iter().map(|(s, _)| *s).collect();
+
+        let Ok(toml::Value::Table(root)) = toml::from_str::<toml::Value>(text) else {
+            return;
+        };
+        for (key, val) in &root {
+            if !known_sections.contains(&key.as_str()) {
+                eprintln!("hyprexpose: config warning in {path}: unknown section [{key}]");
+                continue;
+            }
+            if let toml::Value::Table(section) = val {
+                let known = SECTIONS.iter().find(|(s, _)| s == key).map(|(_, k)| *k).unwrap_or(&[]);
+                for field in section.keys() {
+                    if !known.contains(&field.as_str()) {
+                        eprintln!("hyprexpose: config warning in {path}: unknown key [{key}].{field}");
+                    }
+                }
             }
         }
     }
