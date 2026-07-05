@@ -21,6 +21,28 @@ pub(crate) fn parse_gtk_icon_theme(ini_text: &str) -> Option<String> {
     None
 }
 
+/// Parses `IconThemeName`'s `value="..."` attribute out of an XFCE
+/// `xsettings.xml` xfconf channel file. Scans line by line for a
+/// `name="IconThemeName"` property and pulls its `value="..."` attribute.
+pub(crate) fn parse_xfconf_icon_theme(xml_text: &str) -> Option<String> {
+    for line in xml_text.lines() {
+        if !line.contains("name=\"IconThemeName\"") {
+            continue;
+        }
+        let key = "value=\"";
+        if let Some(start) = line.find(key).map(|i| i + key.len()) {
+            let rest = &line[start..];
+            if let Some(end) = rest.find('"') {
+                let value = &rest[..end];
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Ordered list of icon names to try when looking up an app's icon: the raw
 /// window class, then the cleaned (reversed-domain-stripped), lowercased name.
 pub(crate) fn icon_name_candidates(class_name: &str) -> Vec<String> {
@@ -71,18 +93,97 @@ fn decode_svg(path: &Path, size: u32) -> Option<ImageSurface> {
     ImageSurface::create_for_data(argb, Format::ARgb32, size as i32, size as i32, stride).ok()
 }
 
+/// Parses the `Icon=` value out of a `.desktop` file's `[Desktop Entry]`
+/// section only — ignoring any `Icon=` in later sections such as
+/// `[Desktop Action ...]`.
+pub(crate) fn parse_desktop_icon(desktop_text: &str) -> Option<String> {
+    let mut in_desktop_entry = false;
+    for line in desktop_text.lines() {
+        let line = line.trim();
+        if let Some(section) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            in_desktop_entry = section == "Desktop Entry";
+            continue;
+        }
+        if !in_desktop_entry {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("Icon=") {
+            let value = value.trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// XDG application directories to search for a `.desktop` file, in priority
+/// order: `$XDG_DATA_HOME/applications` (default `~/.local/share/applications`),
+/// then each entry of `$XDG_DATA_DIRS/applications` (default
+/// `/usr/local/share/applications:/usr/share/applications`).
+fn app_data_dirs() -> Vec<std::path::PathBuf> {
+    let mut dirs = Vec::new();
+
+    let data_home = std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| Path::new(&home).join(".local/share")));
+    if let Some(home) = data_home {
+        dirs.push(home.join("applications"));
+    }
+
+    let data_dirs = std::env::var("XDG_DATA_DIRS")
+        .unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
+    for dir in data_dirs.split(':').filter(|d| !d.is_empty()) {
+        dirs.push(Path::new(dir).join("applications"));
+    }
+
+    dirs
+}
+
+/// Looks up a `.desktop` file named after any of `candidates` (tried in
+/// order, across all `dirs`) and returns its declared `Icon=` name, if any.
+fn find_desktop_icon_name(dirs: &[std::path::PathBuf], candidates: &[String]) -> Option<String> {
+    for dir in dirs {
+        for candidate in candidates {
+            let path = dir.join(format!("{candidate}.desktop"));
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                if let Some(icon) = parse_desktop_icon(&text) {
+                    return Some(icon);
+                }
+            }
+        }
+    }
+    None
+}
+
 fn detect_icon_theme() -> String {
-    let candidates = [
+    let gtk_paths = [
         std::env::var_os("XDG_CONFIG_HOME").map(|p| Path::new(&p).join("gtk-3.0/settings.ini")),
         dirs_home_config("gtk-3.0/settings.ini"),
     ];
-    for path in candidates.into_iter().flatten() {
+    for path in gtk_paths.into_iter().flatten() {
         if let Ok(text) = std::fs::read_to_string(&path) {
             if let Some(theme) = parse_gtk_icon_theme(&text) {
                 return theme;
             }
         }
     }
+
+    // XFCE (and other xfconf-based desktops) store the active icon theme in
+    // xfconf's xsettings channel file rather than gtk-3.0/settings.ini.
+    let xfconf_paths = [
+        std::env::var_os("XDG_CONFIG_HOME")
+            .map(|p| Path::new(&p).join("xfce4/xfconf/xfce-perchannel-xml/xsettings.xml")),
+        dirs_home_config("xfce4/xfconf/xfce-perchannel-xml/xsettings.xml"),
+    ];
+    for path in xfconf_paths.into_iter().flatten() {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            if let Some(theme) = parse_xfconf_icon_theme(&text) {
+                return theme;
+            }
+        }
+    }
+
     "Adwaita".to_string()
 }
 
@@ -137,7 +238,15 @@ impl IconCache {
         if let Some(cached) = self.cache.get(class_name) {
             return cached.clone();
         }
-        let candidates = icon_name_candidates(class_name);
+        let mut candidates = icon_name_candidates(class_name);
+        // An app's .desktop file Icon= is the authoritative icon name and
+        // often differs from its window class (e.g. Thunar's class is
+        // "Thunar" but its Icon= is "org.xfce.thunar") — try it first.
+        if let Some(desktop_icon) = find_desktop_icon_name(&app_data_dirs(), &candidates) {
+            if !candidates.contains(&desktop_icon) {
+                candidates.insert(0, desktop_icon);
+            }
+        }
         let surface = resolve_icon(&candidates, &self.theme, size);
         self.cache.insert(class_name.to_string(), surface.clone());
         surface
@@ -181,6 +290,61 @@ mod tests {
     #[test]
     fn empty_text_returns_none() {
         assert_eq!(parse_gtk_icon_theme(""), None);
+    }
+
+    #[test]
+    fn parses_icon_theme_from_xfconf_xsettings_xml() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xsettings" version="1.0">
+  <property name="Net" type="empty">
+    <property name="ThemeName" type="string" value="Adwaita-dark"/>
+    <property name="IconThemeName" type="string" value="Papirus-Dark"/>
+  </property>
+</channel>
+"#;
+        assert_eq!(
+            parse_xfconf_icon_theme(xml),
+            Some("Papirus-Dark".to_string())
+        );
+    }
+
+    #[test]
+    fn missing_xfconf_icon_theme_property_returns_none() {
+        let xml = r#"<channel name="xsettings" version="1.0"><property name="Net" type="empty"/></channel>"#;
+        assert_eq!(parse_xfconf_icon_theme(xml), None);
+    }
+
+    #[test]
+    fn parses_icon_from_desktop_entry_section() {
+        let desktop = "[Desktop Entry]\nType=Application\nName=Thunar\nIcon=org.xfce.thunar\nExec=thunar %U\n";
+        assert_eq!(
+            parse_desktop_icon(desktop),
+            Some("org.xfce.thunar".to_string())
+        );
+    }
+
+    #[test]
+    fn ignores_icon_key_outside_desktop_entry_section() {
+        // "Icon=" in a [Desktop Action ...] section shouldn't be picked up
+        // over the main entry's icon, and a file with no [Desktop Entry]
+        // Icon= at all should return None.
+        let desktop = "[Desktop Action new-window]\nIcon=window-new\nExec=thunar\n";
+        assert_eq!(parse_desktop_icon(desktop), None);
+    }
+
+    #[test]
+    fn desktop_entry_icon_takes_priority_over_later_action_icon() {
+        let desktop = "[Desktop Entry]\nIcon=org.xfce.thunar\n\n[Desktop Action new-window]\nIcon=window-new\n";
+        assert_eq!(
+            parse_desktop_icon(desktop),
+            Some("org.xfce.thunar".to_string())
+        );
+    }
+
+    #[test]
+    fn missing_icon_key_returns_none() {
+        let desktop = "[Desktop Entry]\nName=Thunar\nExec=thunar %U\n";
+        assert_eq!(parse_desktop_icon(desktop), None);
     }
 
     #[test]
@@ -231,5 +395,33 @@ mod tests {
     fn decode_svg_returns_none_for_missing_file() {
         let path = std::path::Path::new("/nonexistent/hyprexpose-icon-test.svg");
         assert!(decode_svg(path, 20).is_none());
+    }
+
+    #[test]
+    fn find_desktop_icon_name_matches_by_filename_and_reads_icon() {
+        let dir =
+            std::env::temp_dir().join(format!("hyprexpose-desktop-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("thunar.desktop"),
+            "[Desktop Entry]\nName=Thunar\nIcon=org.xfce.thunar\n",
+        )
+        .unwrap();
+
+        let dirs = vec![dir.clone()];
+        let candidates = vec!["Thunar".to_string(), "thunar".to_string()];
+        assert_eq!(
+            find_desktop_icon_name(&dirs, &candidates),
+            Some("org.xfce.thunar".to_string())
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn find_desktop_icon_name_returns_none_when_no_file_matches() {
+        let dirs = vec![std::path::PathBuf::from("/nonexistent/hyprexpose-apps")];
+        let candidates = vec!["nope".to_string()];
+        assert_eq!(find_desktop_icon_name(&dirs, &candidates), None);
     }
 }
