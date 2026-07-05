@@ -217,6 +217,7 @@ fn default_up()          -> Vec<String> { vec!["Up".into(), "k".into()] }
 fn default_down()        -> Vec<String> { vec!["Down".into(), "j".into()] }
 fn default_move_window()   -> Vec<String> { vec!["m".into()] }
 fn default_close_window()  -> Vec<String> { vec!["Delete".into()] }
+fn default_tab()           -> Vec<String> { vec!["Tab".into()] }
 
 #[derive(Deserialize, Clone)]
 #[serde(default)]
@@ -237,6 +238,8 @@ pub struct KeybindingsConfig {
     pub move_window: Vec<String>,
     #[serde(default = "default_close_window", deserialize_with = "deserialize_key_list")]
     pub close_window: Vec<String>,
+    #[serde(default = "default_tab",          deserialize_with = "deserialize_key_list")]
+    pub tab: Vec<String>,
 }
 
 impl Default for KeybindingsConfig {
@@ -250,6 +253,7 @@ impl Default for KeybindingsConfig {
             down:         default_down(),
             move_window:  default_move_window(),
             close_window: default_close_window(),
+            tab:          default_tab(),
         }
     }
 }
@@ -320,7 +324,7 @@ impl Config {
             ]),
             ("keybindings", &[
                 "close", "confirm", "left", "right", "up", "down",
-                "move_window", "close_window",
+                "move_window", "close_window", "tab",
             ]),
         ];
         let known_sections: Vec<&str> = SECTIONS.iter().map(|(s, _)| *s).collect();
@@ -391,5 +395,11 @@ mod tests {
         let cfg: AppearanceConfig = toml::from_str(toml_str).unwrap();
         assert!(!cfg.show_app_icons);
         assert_eq!(cfg.icon_size, 32.0);
+    }
+
+    #[test]
+    fn tab_keybinding_defaults_to_tab_key() {
+        let cfg = KeybindingsConfig::default();
+        assert_eq!(cfg.tab, vec!["Tab".to_string()]);
     }
 }

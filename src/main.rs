@@ -115,6 +115,7 @@ struct ResolvedKeys {
     down:         Vec<u32>,
     move_window:  Vec<u32>,
     close_window: Vec<u32>,
+    tab:          Vec<u32>,
 }
 
 impl ResolvedKeys {
@@ -128,6 +129,7 @@ impl ResolvedKeys {
             down:         resolve_keys(&kb.down),
             move_window:  resolve_keys(&kb.move_window),
             close_window: resolve_keys(&kb.close_window),
+            tab:          resolve_keys(&kb.tab),
         }
     }
 }

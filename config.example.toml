@@ -90,7 +90,7 @@ tooltip_title      = "#d9d9e7e5"   # window title
 
 # ── Keybindings ───────────────────────────────────────────────────────────────
 # Each action accepts a single key name or an array of key names.
-# Supported names: "Escape", "Return", "Left", "Right", "Up", "Down", "space",
+# Supported names: "Escape", "Return", "Left", "Right", "Up", "Down", "Tab", "space",
 # or any single printable character ("h", "j", "k", "l", "m", etc.).
 # Number keys 1–9 always jump directly to that workspace and cannot be remapped.
 
@@ -103,6 +103,7 @@ up          = ["Up", "k"]
 down        = ["Down", "j"]
 move_window   = "m"
 close_window  = "Delete"   # close the hovered window (or the single filter match)
+tab           = "Tab"      # cycle-highlight windows across all workspaces; hold Shift to reverse
 
 # ── Behavior ──────────────────────────────────────────────────────────────────
 
