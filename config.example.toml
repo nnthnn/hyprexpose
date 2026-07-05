@@ -36,6 +36,12 @@ thumb_padding = 8.0
 select_border = 3.0
 window_gap    = 4.0    # gap between adjacent window thumbnails (px); border sits in this space
 
+# Draw each window's app icon in the bottom-right corner of its thumbnail.
+show_app_icons = true
+
+# Size (px) of the app icon drawn on each window thumbnail.
+icon_size = 20.0
+
 # ── Colors ────────────────────────────────────────────────────────────────────
 # Colors can be written as:
 #   "#rrggbb"   — hex RGB, fully opaque

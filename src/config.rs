@@ -80,6 +80,10 @@ pub struct AppearanceConfig {
     pub columns: usize,
     /// Base font family used for the hover tooltip (size suffixes are appended automatically).
     pub tooltip_font: String,
+    /// Draw each window's app icon in the bottom-right corner of its thumbnail.
+    pub show_app_icons: bool,
+    /// Size (px) of the app icon drawn on each window thumbnail.
+    pub icon_size: f64,
 }
 
 impl Default for AppearanceConfig {
@@ -97,6 +101,8 @@ impl Default for AppearanceConfig {
             window_gap: 4.0,
             columns: 0,
             tooltip_font: "Sans".into(),
+            show_app_icons: true,
+            icon_size: 20.0,
         }
     }
 }
@@ -301,6 +307,7 @@ impl Config {
                 "font", "label_font", "tooltip_font",
                 "card_padding", "card_radius", "max_card_width", "max_card_height",
                 "label_height", "thumb_padding", "select_border", "window_gap", "columns",
+                "show_app_icons", "icon_size",
             ]),
             ("colors", &[
                 "background", "card", "selection", "label", "empty_label",
@@ -362,4 +369,27 @@ pub fn config_path() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|_| home_dir().join(".config"));
     base.join("hyprexpose").join("config.toml")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn appearance_defaults_include_app_icons() {
+        let cfg = AppearanceConfig::default();
+        assert!(cfg.show_app_icons);
+        assert_eq!(cfg.icon_size, 20.0);
+    }
+
+    #[test]
+    fn appearance_parses_app_icon_overrides() {
+        let toml_str = r#"
+            show_app_icons = false
+            icon_size = 32.0
+        "#;
+        let cfg: AppearanceConfig = toml::from_str(toml_str).unwrap();
+        assert!(!cfg.show_app_icons);
+        assert_eq!(cfg.icon_size, 32.0);
+    }
 }
