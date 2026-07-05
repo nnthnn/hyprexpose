@@ -118,17 +118,11 @@ fn resolve_icon(candidates: &[String], theme: &str, size: u32) -> Option<ImageSu
     None
 }
 
-// Not yet constructed outside tests; Task 5's `render.rs`/`main.rs`
-// integration will consume this.
-#[allow(dead_code)]
 pub struct IconCache {
     theme: String,
     cache: HashMap<String, Option<ImageSurface>>,
 }
 
-// Not yet called outside tests; Task 5's `render.rs`/`main.rs` integration
-// will consume these.
-#[allow(dead_code)]
 impl IconCache {
     pub fn new() -> Self {
         Self {

@@ -24,6 +24,14 @@ fn find_thumb(thumbnails: &[Thumbnail], address: u64) -> Option<&Thumbnail> {
     thumbnails.iter().find(|t| t.address == address)
 }
 
+/// Bottom-right-corner placement for a fixed-size icon inset by `margin`
+/// from the edges of a `(rx, ry, rw, rh)` rect. Returns `(x, y, w, h)`.
+fn icon_rect(rx: f64, ry: f64, rw: f64, rh: f64, icon_size: f64, margin: f64) -> (f64, f64, f64, f64) {
+    let x = rx + rw - icon_size - margin;
+    let y = ry + rh - icon_size - margin;
+    (x, y, icon_size, icon_size)
+}
+
 pub(crate) fn clean_app_name(class: &str) -> &str {
     // Strip reversed-domain prefix: "dev.zed.Zed" → "Zed", "org.foo.Bar" → "Bar"
     if class.contains('.') {
@@ -50,6 +58,7 @@ fn draw_client(
     filter_match: Option<u64>,
     filter: &str,
     window_font: &pango::FontDescription,
+    icon_cache: &mut crate::icons::IconCache,
 ) {
     // Inset each thumbnail by half the gap so adjacent windows have a full gap between them
     let g = cfg.appearance.window_gap / 2.0;
@@ -166,6 +175,26 @@ fn draw_client(
             cr.fill().ok();
         }
     }
+
+    // App icon in the bottom-right corner
+    if cfg.appearance.show_app_icons && rw > 40.0 && rh > 20.0 && !client.class_name.is_empty() {
+        let icon_size = cfg.appearance.icon_size;
+        if let Some(icon) = icon_cache.get(&client.class_name, icon_size as u32) {
+            let margin = 4.0;
+            let (ix, iy, iw, ih) = icon_rect(rx, ry, rw, rh, icon_size, margin);
+            let backing_pad = 2.0;
+            rounded_rect(cr, ix - backing_pad, iy - backing_pad, iw + backing_pad * 2.0, ih + backing_pad * 2.0, 4.0);
+            cr.set_source_rgba(0.0, 0.0, 0.0, 0.45);
+            cr.fill().ok();
+
+            cr.save().ok();
+            cr.translate(ix, iy);
+            cr.scale(iw / icon.width() as f64, ih / icon.height() as f64);
+            cr.set_source_surface(&icon, 0.0, 0.0).ok();
+            cr.paint().ok();
+            cr.restore().ok();
+        }
+    }
 }
 
 pub struct DrawParams<'a> {
@@ -181,10 +210,11 @@ pub struct DrawParams<'a> {
     pub pointer_y: f64,
     pub filter_match: Option<u64>,
     pub filter: &'a str,
+    pub icon_cache: &'a mut crate::icons::IconCache,
 }
 
 pub fn draw(p: DrawParams<'_>) -> Vec<u8> {
-    let DrawParams { width, height, workspaces, selected_index, thumbnails, cfg, active_window_address, hovered_window, pointer_x, pointer_y, filter_match, filter } = p;
+    let DrawParams { width, height, workspaces, selected_index, thumbnails, cfg, active_window_address, hovered_window, pointer_x, pointer_y, filter_match, filter, icon_cache } = p;
     let stride = width * 4;
     let size = (stride * height) as usize;
     let buf = vec![0u8; size];
@@ -313,7 +343,7 @@ pub fn draw(p: DrawParams<'_>) -> Vec<u8> {
         let off_y = win_y + (win_h - ws_h * scale) / 2.0;
 
         for client in &ws.clients {
-            draw_client(&cr, cfg, client, min_x, min_y, scale, off_x, off_y, thumbnails, active_window_address, hovered_window, filter_match, filter, &window_font);
+            draw_client(&cr, cfg, client, min_x, min_y, scale, off_x, off_y, thumbnails, active_window_address, hovered_window, filter_match, filter, &window_font, icon_cache);
         }
 
         // Dim card if it doesn't match the active filter
@@ -498,5 +528,62 @@ mod tests {
     #[test]
     fn clean_app_name_trailing_dot_returns_empty() {
         assert_eq!(clean_app_name("foo."), "");
+    }
+
+    #[test]
+    fn icon_rect_sits_in_bottom_right_corner_with_margin() {
+        let (x, y, w, h) = icon_rect(10.0, 20.0, 100.0, 60.0, 24.0, 4.0);
+        // rx=10, ry=20, rw=100, rh=60, icon_size=24, margin=4
+        assert_eq!(w, 24.0);
+        assert_eq!(h, 24.0);
+        assert_eq!(x, 10.0 + 100.0 - 24.0 - 4.0); // 82.0
+        assert_eq!(y, 20.0 + 60.0 - 24.0 - 4.0);  // 52.0
+    }
+
+    #[test]
+    fn draw_does_not_panic_with_show_app_icons_toggled() {
+        use crate::ipc::{ClientInfo, WorkspaceInfo};
+
+        let client = ClientInfo {
+            class_name: "firefox".to_string(),
+            title: "Mozilla Firefox".to_string(),
+            initial_title: String::new(),
+            address: 1,
+            workspace_id: 1,
+            x: 0,
+            y: 0,
+            w: 800,
+            h: 600,
+        };
+        let ws = WorkspaceInfo {
+            id: 1,
+            name: String::new(),
+            monitor_id: 0,
+            clients: vec![client],
+        };
+
+        for show_icons in [true, false] {
+            let mut cfg = Config::default();
+            cfg.appearance.show_app_icons = show_icons;
+            let mut icon_cache = crate::icons::IconCache::new();
+
+            let pixels = draw(DrawParams {
+                width: 800,
+                height: 600,
+                workspaces: std::slice::from_ref(&ws),
+                selected_index: 0,
+                thumbnails: &[],
+                cfg: &cfg,
+                active_window_address: 0,
+                hovered_window: None,
+                pointer_x: 0.0,
+                pointer_y: 0.0,
+                filter_match: None,
+                filter: "",
+                icon_cache: &mut icon_cache,
+            });
+
+            assert_eq!(pixels.len(), (800 * 600 * 4) as usize);
+        }
     }
 }

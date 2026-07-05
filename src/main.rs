@@ -219,6 +219,7 @@ struct AppState {
     // App state
     workspaces: Vec<WorkspaceInfo>,
     thumbnails: Vec<Thumbnail>,
+    icon_cache: icons::IconCache,
     selected: usize,
     no_preview: bool,
     active_window_address: u64,
@@ -292,6 +293,7 @@ impl AppState {
             needs_redraw: false,
             workspaces: Vec::new(),
             thumbnails: Vec::new(),
+            icon_cache: icons::IconCache::new(),
             selected: 0,
             no_preview,
             active_window_address: 0,
@@ -928,6 +930,7 @@ fn redraw(state: &mut AppState, qh: &QueueHandle<AppState>) {
         pointer_y: state.pointer_y,
         filter_match: state.filter_match,
         filter: &state.filter,
+        icon_cache: &mut state.icon_cache,
     });
 
     let stride = state.width * 4;
