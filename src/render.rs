@@ -38,6 +38,18 @@ fn clamped_icon_size(configured: f64) -> f64 {
     configured.clamp(8.0, 256.0)
 }
 
+/// Returns `(name_text_x_offset, name_row_height)` for the tooltip's name
+/// row. `icon_size` is `0.0` when no icon will be drawn (the icon column
+/// collapses to nothing); otherwise it's the icon's side length, `gap` is
+/// the fixed spacing between icon and text, and `text_height` is the name
+/// text's own pixel height.
+fn tooltip_name_row_metrics(icon_size: f64, gap: f64, text_height: f64) -> (f64, f64) {
+    if icon_size <= 0.0 {
+        return (0.0, text_height);
+    }
+    (icon_size + gap, text_height.max(icon_size))
+}
+
 pub(crate) fn clean_app_name(class: &str) -> &str {
     // Strip reversed-domain prefix: "dev.zed.Zed" → "Zed", "org.foo.Bar" → "Bar"
     if class.contains('.') {
@@ -402,6 +414,7 @@ pub fn draw(p: DrawParams<'_>) -> Vec<u8> {
             let max_w = (width as f64 * 0.35) as i32;
             let pad = 12.0_f64;
             let line_gap = 4.0_f64;
+            let icon_gap = 8.0_f64;
 
             let name_l  = make_layout(app, &name_font, max_w);
             let class_l = show_class.then(|| make_layout(full_class, &class_font, max_w));
@@ -411,8 +424,20 @@ pub fn draw(p: DrawParams<'_>) -> Vec<u8> {
             let (cw, ch) = class_l.as_ref().map(|l| l.pixel_size()).unwrap_or((0, 0));
             let (tw, th) = title_l.as_ref().map(|l| l.pixel_size()).unwrap_or((0, 0));
 
-            let content_w = [nw, cw, tw].iter().copied().max().unwrap_or(0) as f64;
-            let content_h = nh as f64
+            let icon = if cfg.appearance.show_app_icons && !c.class_name.is_empty() {
+                let size = clamped_icon_size(cfg.appearance.icon_size);
+                icon_cache.get(&c.class_name, size as u32).map(|surface| (surface, size))
+            } else {
+                None
+            };
+            let icon_size = icon.as_ref().map(|(_, size)| *size).unwrap_or(0.0);
+            let (name_x_offset, name_row_h) = tooltip_name_row_metrics(icon_size, icon_gap, nh as f64);
+
+            let content_w = [name_x_offset + nw as f64, cw as f64, tw as f64]
+                .iter()
+                .copied()
+                .fold(0.0, f64::max);
+            let content_h = name_row_h
                 + if show_class { ch as f64 + line_gap } else { 0.0 }
                 + if title_l.is_some() { th as f64 + line_gap } else { 0.0 };
 
@@ -429,11 +454,22 @@ pub fn draw(p: DrawParams<'_>) -> Vec<u8> {
             cr.fill().ok();
 
             let mut ty = by + pad;
+
+            if let Some((surface, size)) = &icon {
+                let icon_y = ty + (name_row_h - size) / 2.0;
+                cr.save().ok();
+                cr.translate(bx + pad, icon_y);
+                cr.scale(size / surface.width() as f64, size / surface.height() as f64);
+                cr.set_source_surface(surface, 0.0, 0.0).ok();
+                cr.paint().ok();
+                cr.restore().ok();
+            }
+
             let (r, g, b, a) = cfg.colors.tooltip_name.rgba();
             cr.set_source_rgba(r, g, b, a);
-            cr.move_to(bx + pad, ty);
+            cr.move_to(bx + pad + name_x_offset, ty + (name_row_h - nh as f64) / 2.0);
             pangocairo::functions::show_layout(&cr, &name_l);
-            ty += nh as f64 + line_gap;
+            ty += name_row_h + line_gap;
 
             if let Some(cl) = &class_l {
                 let (r, g, b, a) = cfg.colors.tooltip_class.rgba();
@@ -547,6 +583,27 @@ mod tests {
     }
 
     #[test]
+    fn tooltip_name_row_offset_widens_for_icon() {
+        // With no icon (icon_size = 0.0), the name text starts right at the
+        // tooltip's left padding, and the row height is just the text height.
+        let (x_offset, row_h) = tooltip_name_row_metrics(0.0, 8.0, 30.0);
+        assert_eq!(x_offset, 0.0);
+        assert_eq!(row_h, 30.0);
+
+        // With a 20px icon and an 8px gap, the name text shifts right by
+        // icon_size + gap, and the row height is the max of icon size and
+        // text height.
+        let (x_offset, row_h) = tooltip_name_row_metrics(20.0, 8.0, 30.0);
+        assert_eq!(x_offset, 28.0);
+        assert_eq!(row_h, 30.0);
+
+        // When the icon is taller than the text, the row height follows the icon.
+        let (x_offset, row_h) = tooltip_name_row_metrics(40.0, 8.0, 30.0);
+        assert_eq!(x_offset, 48.0);
+        assert_eq!(row_h, 40.0);
+    }
+
+    #[test]
     fn clamped_icon_size_caps_huge_values() {
         assert_eq!(clamped_icon_size(5000.0), 256.0);
     }
@@ -597,9 +654,9 @@ mod tests {
                 thumbnails: &[],
                 cfg: &cfg,
                 active_window_address: 0,
-                hovered_window: None,
-                pointer_x: 0.0,
-                pointer_y: 0.0,
+                hovered_window: Some(1),
+                pointer_x: 100.0,
+                pointer_y: 100.0,
                 filter_match: None,
                 filter: "",
                 icon_cache: &mut icon_cache,
