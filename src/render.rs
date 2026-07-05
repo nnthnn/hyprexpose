@@ -164,18 +164,6 @@ fn draw_client(
         pangocairo::functions::show_layout(cr, &layout);
     }
 
-    // Dim window if it doesn't match the active filter
-    if !filter.is_empty() {
-        let f = filter.to_lowercase();
-        let matches = client.class_name.to_lowercase().contains(&f)
-            || client.title.to_lowercase().contains(&f);
-        if !matches {
-            rounded_rect(cr, rx, ry, rw, rh, 4.0);
-            cr.set_source_rgba(0.0, 0.0, 0.0, 0.6);
-            cr.fill().ok();
-        }
-    }
-
     // App icon in the bottom-right corner
     if cfg.appearance.show_app_icons && rw > 40.0 && rh > 20.0 && !client.class_name.is_empty() {
         let icon_size = cfg.appearance.icon_size;
@@ -193,6 +181,18 @@ fn draw_client(
             cr.set_source_surface(&icon, 0.0, 0.0).ok();
             cr.paint().ok();
             cr.restore().ok();
+        }
+    }
+
+    // Dim window if it doesn't match the active filter
+    if !filter.is_empty() {
+        let f = filter.to_lowercase();
+        let matches = client.class_name.to_lowercase().contains(&f)
+            || client.title.to_lowercase().contains(&f);
+        if !matches {
+            rounded_rect(cr, rx, ry, rw, rh, 4.0);
+            cr.set_source_rgba(0.0, 0.0, 0.0, 0.6);
+            cr.fill().ok();
         }
     }
 }
