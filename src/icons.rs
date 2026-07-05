@@ -32,6 +32,21 @@ pub(crate) fn icon_name_candidates(class_name: &str) -> Vec<String> {
     candidates
 }
 
+/// Converts premultiplied RGBA bytes (as produced by tiny-skia) into Cairo's
+/// ARgb32 byte order. Both formats are already premultiplied; only a byte
+/// swap of R and B is needed. On little-endian machines, Cairo's ARgb32 is
+/// stored as `[B, G, R, A]` per pixel, while tiny-skia provides `[R, G, B, A]`.
+// Not yet called outside tests; Task 4's SVG decoding path will consume this.
+#[allow(dead_code)]
+pub(crate) fn premultiplied_rgba_to_cairo_argb(rgba: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(rgba.len());
+    for px in rgba.chunks_exact(4) {
+        let [r, g, b, a] = [px[0], px[1], px[2], px[3]];
+        out.extend_from_slice(&[b, g, r, a]);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,5 +93,18 @@ mod tests {
         // "alacritty" cleaned is still "alacritty" and already lowercase —
         // candidates should not contain the exact same string twice.
         assert_eq!(icon_name_candidates("alacritty"), vec!["alacritty"]);
+    }
+
+    #[test]
+    fn swaps_r_and_b_keeps_g_and_a() {
+        // Two pixels: opaque red, then translucent green.
+        let rgba = [255u8, 0, 0, 255, 0, 128, 0, 64];
+        let argb = premultiplied_rgba_to_cairo_argb(&rgba);
+        assert_eq!(argb, vec![0, 0, 255, 255, 0, 128, 0, 64]);
+    }
+
+    #[test]
+    fn empty_input_returns_empty_output() {
+        assert_eq!(premultiplied_rgba_to_cairo_argb(&[]), Vec::<u8>::new());
     }
 }
