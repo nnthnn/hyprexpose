@@ -76,8 +76,12 @@ const XKB_KEY_UP:        u32 = 0xff52;
 const XKB_KEY_RIGHT:     u32 = 0xff53;
 const XKB_KEY_DOWN:      u32 = 0xff54;
 const XKB_KEY_DELETE:    u32 = 0xffff;
+const XKB_KEY_TAB:       u32 = 0xff09;
 const XKB_KEY_1: u32 = 0x0031;
 const XKB_KEY_9: u32 = 0x0039;
+
+const KEYCODE_LEFTSHIFT:  u32 = 42;
+const KEYCODE_RIGHTSHIFT: u32 = 54;
 
 fn key_name_to_keysym(name: &str) -> Option<u32> {
     match name {
@@ -87,6 +91,7 @@ fn key_name_to_keysym(name: &str) -> Option<u32> {
         "Up"             => Some(XKB_KEY_UP),
         "Right"          => Some(XKB_KEY_RIGHT),
         "Down"           => Some(XKB_KEY_DOWN),
+        "Tab"            => Some(XKB_KEY_TAB),
         "space" | "Space" => Some(0x0020),
         "Delete"          => Some(XKB_KEY_DELETE),
         _ if name.len() == 1 => {
@@ -133,6 +138,7 @@ fn keycode_to_keysym(keycode: u32) -> u32 {
     match keycode {
         1   => XKB_KEY_ESCAPE,
         14  => XKB_KEY_BACKSPACE,
+        15  => XKB_KEY_TAB,
         28  => XKB_KEY_RETURN,
         57  => 0x0020, // space
         103 => XKB_KEY_UP,
@@ -230,6 +236,10 @@ struct AppState {
     filter: String,
     filter_match: Option<u64>,
 
+    // Tab-cycle
+    shift_held: bool,
+    tab_target: Option<u64>,
+
     // Mouse support (only active when --allow-mouse is set).
     allow_mouse: bool,
     pointer_x: f64,
@@ -301,6 +311,8 @@ impl AppState {
             config,
             filter: String::new(),
             filter_match: None,
+            shift_held: false,
+            tab_target: None,
             allow_mouse,
             pointer_x: 0.0,
             pointer_y: 0.0,
@@ -675,15 +687,16 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppState {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let wl_keyboard::Event::Key {
-            key,
-            state: WEnum::Value(wl_keyboard::KeyState::Pressed),
-            ..
-        } = event
-        {
-            let keysym = keycode_to_keysym(key);
-            if keysym != 0 && state.handle_key(keysym) {
-                state.should_close = true;
+        if let wl_keyboard::Event::Key { key, state: WEnum::Value(key_state), .. } = event {
+            if key == KEYCODE_LEFTSHIFT || key == KEYCODE_RIGHTSHIFT {
+                state.shift_held = key_state == wl_keyboard::KeyState::Pressed;
+                return;
+            }
+            if key_state == wl_keyboard::KeyState::Pressed {
+                let keysym = keycode_to_keysym(key);
+                if keysym != 0 && state.handle_key(keysym) {
+                    state.should_close = true;
+                }
             }
         }
     }
@@ -1497,5 +1510,17 @@ mod tests {
     fn match_is_case_insensitive() {
         let workspaces = vec![workspace("1", vec![client(10, "Alacritty", "bash")])];
         assert_eq!(find_single_window_match(&workspaces, "ALACRITTY"), Some(10));
+    }
+
+    // ── key mapping functions ────────────────────────────────────────────────
+
+    #[test]
+    fn keycode_15_maps_to_tab() {
+        assert_eq!(keycode_to_keysym(15), XKB_KEY_TAB);
+    }
+
+    #[test]
+    fn key_name_tab_resolves() {
+        assert_eq!(key_name_to_keysym("Tab"), Some(XKB_KEY_TAB));
     }
 }
