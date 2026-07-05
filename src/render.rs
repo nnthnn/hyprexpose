@@ -24,7 +24,7 @@ fn find_thumb(thumbnails: &[Thumbnail], address: u64) -> Option<&Thumbnail> {
     thumbnails.iter().find(|t| t.address == address)
 }
 
-fn clean_app_name(class: &str) -> &str {
+pub(crate) fn clean_app_name(class: &str) -> &str {
     // Strip reversed-domain prefix: "dev.zed.Zed" → "Zed", "org.foo.Bar" → "Bar"
     if class.contains('.') {
         if let Some(last) = class.rsplit('.').next() {

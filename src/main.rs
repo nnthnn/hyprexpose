@@ -1,4 +1,5 @@
 mod config;
+mod icons;
 mod ipc;
 mod render;
 
