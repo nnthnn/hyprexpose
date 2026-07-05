@@ -32,6 +32,12 @@ fn icon_rect(rx: f64, ry: f64, rw: f64, rh: f64, icon_size: f64, margin: f64) ->
     (x, y, icon_size, icon_size)
 }
 
+/// Clamp a user-configured icon size to a sane range so a typo (e.g. `5000.0`)
+/// can't trigger a huge synchronous SVG rasterization allocation.
+fn clamped_icon_size(configured: f64) -> f64 {
+    configured.clamp(8.0, 256.0)
+}
+
 pub(crate) fn clean_app_name(class: &str) -> &str {
     // Strip reversed-domain prefix: "dev.zed.Zed" → "Zed", "org.foo.Bar" → "Bar"
     if class.contains('.') {
@@ -166,7 +172,7 @@ fn draw_client(
 
     // App icon in the bottom-right corner
     if cfg.appearance.show_app_icons && rw > 40.0 && rh > 20.0 && !client.class_name.is_empty() {
-        let icon_size = cfg.appearance.icon_size;
+        let icon_size = clamped_icon_size(cfg.appearance.icon_size);
         if let Some(icon) = icon_cache.get(&client.class_name, icon_size as u32) {
             let margin = 4.0;
             let (ix, iy, iw, ih) = icon_rect(rx, ry, rw, rh, icon_size, margin);
@@ -538,6 +544,22 @@ mod tests {
         assert_eq!(h, 24.0);
         assert_eq!(x, 10.0 + 100.0 - 24.0 - 4.0); // 82.0
         assert_eq!(y, 20.0 + 60.0 - 24.0 - 4.0);  // 52.0
+    }
+
+    #[test]
+    fn clamped_icon_size_caps_huge_values() {
+        assert_eq!(clamped_icon_size(5000.0), 256.0);
+    }
+
+    #[test]
+    fn clamped_icon_size_floors_negative_or_tiny_values() {
+        assert_eq!(clamped_icon_size(-10.0), 8.0);
+        assert_eq!(clamped_icon_size(0.0), 8.0);
+    }
+
+    #[test]
+    fn clamped_icon_size_passes_through_sane_values() {
+        assert_eq!(clamped_icon_size(20.0), 20.0);
     }
 
     #[test]
