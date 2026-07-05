@@ -1,4 +1,6 @@
-/// Parses `gtk-icon-theme-name = "..."` out of a GTK settings.ini's `[Settings]` section.
+/// Parses `gtk-icon-theme-name = "..."` out of a GTK settings.ini file. Scans
+/// the whole text for a matching key, without regard to `[Settings]` section
+/// boundaries.
 // Not yet called outside tests; Task 4's `IconCache::get` will consume this.
 #[allow(dead_code)]
 pub(crate) fn parse_gtk_icon_theme(ini_text: &str) -> Option<String> {
@@ -6,9 +8,11 @@ pub(crate) fn parse_gtk_icon_theme(ini_text: &str) -> Option<String> {
         let line = line.trim();
         if let Some(rest) = line.strip_prefix("gtk-icon-theme-name") {
             let rest = rest.trim_start();
-            let value = rest.strip_prefix('=')?.trim();
-            if !value.is_empty() {
-                return Some(value.to_string());
+            if let Some(value) = rest.strip_prefix('=') {
+                let value = value.trim();
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
             }
         }
     }
@@ -42,6 +46,12 @@ mod tests {
     fn parses_icon_theme_with_spaces_around_equals() {
         let ini = "[Settings]\ngtk-icon-theme-name = Yaru\n";
         assert_eq!(parse_gtk_icon_theme(ini), Some("Yaru".to_string()));
+    }
+
+    #[test]
+    fn skips_lookalike_line_without_equals_and_finds_real_key() {
+        let ini = "gtk-icon-theme-name-extra=foo\ngtk-icon-theme-name=Papirus\n";
+        assert_eq!(parse_gtk_icon_theme(ini), Some("Papirus".to_string()));
     }
 
     #[test]
