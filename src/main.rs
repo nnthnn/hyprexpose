@@ -287,7 +287,14 @@ fn tab_candidates(workspaces: &[WorkspaceInfo], filter: &str) -> Vec<u64> {
     let f = filter.to_lowercase();
     workspaces
         .iter()
-        .flat_map(|ws| ws.clients.iter())
+        .flat_map(|ws| {
+            // ws.clients arrives in Hyprland's internal list order, not screen
+            // position, so sort into reading order (top-to-bottom, left-to-right)
+            // to match what the grid actually shows.
+            let mut clients: Vec<&ipc::ClientInfo> = ws.clients.iter().collect();
+            clients.sort_by_key(|c| (c.y, c.x));
+            clients
+        })
         .filter(|c| {
             f.is_empty()
                 || c.class_name.to_lowercase().contains(&f)
@@ -1571,6 +1578,19 @@ mod tests {
             workspace("2", vec![client(20, "zed", "editor")]),
         ];
         assert_eq!(tab_candidates(&workspaces, ""), vec![10, 11, 20]);
+    }
+
+    #[test]
+    fn tab_candidates_sorts_by_position_not_list_order() {
+        // ws.clients arrives in Hyprland's internal list order; tab_candidates
+        // must reorder by (y, x) so cycling follows the visual grid, not
+        // whatever order the compositor happened to return.
+        let mut rightmost = client(11, "discord", "chat");
+        rightmost.x = 1917;
+        let mut leftmost = client(10, "firefox", "web");
+        leftmost.x = -1102;
+        let workspaces = vec![workspace("1", vec![rightmost, leftmost])];
+        assert_eq!(tab_candidates(&workspaces, ""), vec![10, 11]);
     }
 
     #[test]
