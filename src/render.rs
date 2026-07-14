@@ -152,8 +152,9 @@ fn draw_client(
         cr.stroke().ok();
     }
 
-    // Hover highlight
-    if hovered_window == Some(client.address) {
+    // Hover highlight (skip if this window is already Tab-highlighted, to avoid
+    // stacking two near-identical rings when the mouse happens to rest on it)
+    if hovered_window == Some(client.address) && tab_target != Some(client.address) {
         let (or_, og, ob, oa) = cfg.colors.hover_overlay.rgba();
         rounded_rect(cr, rx, ry, rw, rh, 4.0);
         cr.set_source_rgba(or_, og, ob, oa);
