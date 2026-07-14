@@ -669,6 +669,7 @@ mod tests {
                 pointer_x: 100.0,
                 pointer_y: 100.0,
                 filter_match: None,
+                tab_target: None,
                 filter: "",
                 icon_cache: &mut icon_cache,
             });
