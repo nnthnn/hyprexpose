@@ -283,6 +283,20 @@ fn workspace_matches(ws: &WorkspaceInfo, filter: &str) -> bool {
         })
 }
 
+fn tab_candidates(workspaces: &[WorkspaceInfo], filter: &str) -> Vec<u64> {
+    let f = filter.to_lowercase();
+    workspaces
+        .iter()
+        .flat_map(|ws| ws.clients.iter())
+        .filter(|c| {
+            f.is_empty()
+                || c.class_name.to_lowercase().contains(&f)
+                || c.title.to_lowercase().contains(&f)
+        })
+        .map(|c| c.address)
+        .collect()
+}
+
 impl AppState {
     fn new(no_preview: bool, allow_mouse: bool, config: Config) -> Self {
         // CLI flags override config values (OR semantics: flag=true forces on)
@@ -391,8 +405,13 @@ impl AppState {
             return false;
         }
 
-        // Escape: clear filter if active, else close
+        // Escape: clear Tab-highlight first, then filter, else close
         if self.keys.close.contains(&k) {
+            if self.tab_target.is_some() {
+                self.tab_target = None;
+                self.needs_redraw = true;
+                return false;
+            }
             if !self.filter.is_empty() {
                 self.filter.clear();
                 self.filter_match = None;
@@ -402,9 +421,10 @@ impl AppState {
             return true;
         }
 
-        // Confirm: if single window match, focus it directly; else activate workspace
+        // Confirm: Tab-highlighted window first, else single filter match, else activate workspace
         if self.keys.confirm.contains(&k) {
-            if let Some(addr) = self.filter_match {
+            let target_addr = self.tab_target.or(self.filter_match);
+            if let Some(addr) = target_addr {
                 let client = self.workspaces.iter()
                     .flat_map(|ws| ws.clients.iter())
                     .find(|c| c.address == addr);
@@ -430,19 +450,42 @@ impl AppState {
             return true;
         }
 
+        // Tab / Shift+Tab: cycle the highlighted window across all workspaces
+        // (or across filter-matching windows, if a filter is active)
+        if self.keys.tab.contains(&k) {
+            let candidates = tab_candidates(&self.workspaces, &self.filter);
+            if !candidates.is_empty() {
+                let reverse = self.shift_held;
+                let cur = self.tab_target.and_then(|addr| candidates.iter().position(|&a| a == addr));
+                let next_index = match (cur, reverse) {
+                    (Some(i), false) => (i + 1) % candidates.len(),
+                    (Some(i), true)  => if i == 0 { candidates.len() - 1 } else { i - 1 },
+                    (None, false)    => 0,
+                    (None, true)     => candidates.len() - 1,
+                };
+                self.tab_target = Some(candidates[next_index]);
+                self.needs_redraw = true;
+            }
+            return false;
+        }
+
         // Arrow keys always navigate; hjkl only when filter is empty
         let is_arrow = matches!(k, XKB_KEY_LEFT | XKB_KEY_RIGHT | XKB_KEY_UP | XKB_KEY_DOWN);
         if is_arrow || self.filter.is_empty() {
             if self.keys.right.contains(&k) && self.selected + 1 < n {
+                self.tab_target = None;
                 self.selected += 1; self.needs_redraw = true; return false;
             }
             if self.keys.left.contains(&k) && self.selected > 0 {
+                self.tab_target = None;
                 self.selected -= 1; self.needs_redraw = true; return false;
             }
             if self.keys.down.contains(&k) && self.selected + cols < n {
+                self.tab_target = None;
                 self.selected += cols; self.needs_redraw = true; return false;
             }
             if self.keys.up.contains(&k) && self.selected >= cols {
+                self.tab_target = None;
                 self.selected -= cols; self.needs_redraw = true; return false;
             }
         }
@@ -461,6 +504,7 @@ impl AppState {
                     ws.clients.retain(|c| c.address != addr);
                 }
                 if self.hovered_window == Some(addr) { self.hovered_window = None; }
+                if self.tab_target == Some(addr) { self.tab_target = None; }
                 self.update_filter_state();
                 self.needs_redraw = true;
             }
@@ -722,6 +766,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for AppState {
                 state.pointer_y = surface_y;
                 state.cursor_enter_serial = serial;
                 state.cursor_is_pointer = false;
+                if state.tab_target.is_some() { state.tab_target = None; state.needs_redraw = true; }
                 state.select_workspace_at(surface_x, surface_y);
                 state.init_cursor(conn, qh);
                 let win = state.window_at(surface_x, surface_y);
@@ -735,6 +780,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for AppState {
             wl_pointer::Event::Motion { surface_x, surface_y, .. } => {
                 state.pointer_x = surface_x;
                 state.pointer_y = surface_y;
+                if state.tab_target.is_some() { state.tab_target = None; state.needs_redraw = true; }
                 state.select_workspace_at(surface_x, surface_y);
                 let win = state.window_at(surface_x, surface_y);
                 if win.is_some() != state.cursor_is_pointer {
@@ -912,6 +958,7 @@ fn hide(state: &mut AppState) {
     state.configured = false;
     state.visible = false;
     state.filter.clear();
+    state.tab_target = None;
     state.workspaces.clear();
     state.thumbnails.clear();
 }
@@ -944,6 +991,7 @@ fn redraw(state: &mut AppState, qh: &QueueHandle<AppState>) {
         pointer_x: state.pointer_x,
         pointer_y: state.pointer_y,
         filter_match: state.filter_match,
+        tab_target: state.tab_target,
         filter: &state.filter,
         icon_cache: &mut state.icon_cache,
     });
@@ -1512,6 +1560,32 @@ mod tests {
     fn match_is_case_insensitive() {
         let workspaces = vec![workspace("1", vec![client(10, "Alacritty", "bash")])];
         assert_eq!(find_single_window_match(&workspaces, "ALACRITTY"), Some(10));
+    }
+
+    // ── tab_candidates ───────────────────────────────────────────────────────
+
+    #[test]
+    fn tab_candidates_empty_filter_returns_all_in_grid_order() {
+        let workspaces = vec![
+            workspace("1", vec![client(10, "foot", "term"), client(11, "firefox", "web")]),
+            workspace("2", vec![client(20, "zed", "editor")]),
+        ];
+        assert_eq!(tab_candidates(&workspaces, ""), vec![10, 11, 20]);
+    }
+
+    #[test]
+    fn tab_candidates_filter_narrows_to_matches() {
+        let workspaces = vec![
+            workspace("1", vec![client(10, "foot", "term"), client(11, "firefox", "web")]),
+            workspace("2", vec![client(20, "firefox", "docs")]),
+        ];
+        assert_eq!(tab_candidates(&workspaces, "firefox"), vec![11, 20]);
+    }
+
+    #[test]
+    fn tab_candidates_no_matches_returns_empty() {
+        let workspaces = vec![workspace("1", vec![client(10, "foot", "term")])];
+        assert_eq!(tab_candidates(&workspaces, "zed"), Vec::<u64>::new());
     }
 
     // ── key mapping functions ────────────────────────────────────────────────

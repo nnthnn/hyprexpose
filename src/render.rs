@@ -74,6 +74,7 @@ fn draw_client(
     active_window_address: u64,
     hovered_window: Option<u64>,
     filter_match: Option<u64>,
+    tab_target: Option<u64>,
     filter: &str,
     window_font: &pango::FontDescription,
     icon_cache: &mut crate::icons::IconCache,
@@ -140,6 +141,14 @@ fn draw_client(
         rounded_rect(cr, rx - 2.0, ry - 2.0, rw + 4.0, rh + 4.0, 6.0);
         cr.set_source_rgba(0.4, 0.8, 1.0, 0.9);
         cr.set_line_width(2.0);
+        cr.stroke().ok();
+    }
+
+    // Tab-cycle highlight
+    if tab_target == Some(client.address) {
+        rounded_rect(cr, rx - 2.0, ry - 2.0, rw + 4.0, rh + 4.0, 6.0);
+        cr.set_source_rgba(0.3, 1.0, 0.4, 0.95);
+        cr.set_line_width(2.5);
         cr.stroke().ok();
     }
 
@@ -227,12 +236,13 @@ pub struct DrawParams<'a> {
     pub pointer_x: f64,
     pub pointer_y: f64,
     pub filter_match: Option<u64>,
+    pub tab_target: Option<u64>,
     pub filter: &'a str,
     pub icon_cache: &'a mut crate::icons::IconCache,
 }
 
 pub fn draw(p: DrawParams<'_>) -> Vec<u8> {
-    let DrawParams { width, height, workspaces, selected_index, thumbnails, cfg, active_window_address, hovered_window, pointer_x, pointer_y, filter_match, filter, icon_cache } = p;
+    let DrawParams { width, height, workspaces, selected_index, thumbnails, cfg, active_window_address, hovered_window, pointer_x, pointer_y, filter_match, tab_target, filter, icon_cache } = p;
     let stride = width * 4;
     let size = (stride * height) as usize;
     let buf = vec![0u8; size];
@@ -361,7 +371,7 @@ pub fn draw(p: DrawParams<'_>) -> Vec<u8> {
         let off_y = win_y + (win_h - ws_h * scale) / 2.0;
 
         for client in &ws.clients {
-            draw_client(&cr, cfg, client, min_x, min_y, scale, off_x, off_y, thumbnails, active_window_address, hovered_window, filter_match, filter, &window_font, icon_cache);
+            draw_client(&cr, cfg, client, min_x, min_y, scale, off_x, off_y, thumbnails, active_window_address, hovered_window, filter_match, tab_target, filter, &window_font, icon_cache);
         }
 
         // Dim card if it doesn't match the active filter
